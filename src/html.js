@@ -701,7 +701,7 @@ export const ADMIN_HTML = `
         const user = document.getElementById('username-input').value;
         const pass = document.getElementById('password-input').value;
         
-        if (user === 'lijiaxu' && pass) {
+        if (user === 'blog' && pass) {
             // 测试密码是否正确：尝试调用一个简单的API
             try {
                 const testResponse = await fetch('/api/posts', {
