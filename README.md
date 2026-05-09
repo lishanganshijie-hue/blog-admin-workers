@@ -117,6 +117,8 @@ PROXY_BASE = "https://edit.upxuu.com/img"  # 图片代理基础 URL
 # 设置 GitHub Token（需要 repo 权限）
 wrangler secret put GITHUB_TOKEN
 
+# 用户名：blog
+
 # 设置管理员密码
 wrangler secret put ADMIN_PASSWORD
 ```
