@@ -27,7 +27,7 @@ export default {
 
       // Proxy Image (Public Access) - Old images from myblog repo
     if (path.startsWith('/image/')) {
-        const filename = path.replace('/image/', '');
+        const filename = path.替换('/image/', '');
         const imageUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/${env.IMAGE_PATH}/${filename}`;
 
         const imageRes = await fetch(imageUrl, {
