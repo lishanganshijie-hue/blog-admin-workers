@@ -1,7 +1,7 @@
 
 import { ADMIN_HTML } from './html.js';
 
-export default {
+export 默认 {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -27,7 +27,7 @@ export default {
 
       // Proxy Image (Public Access) - Old images from myblog repo
     if (path.startsWith('/image/')) {
-        const filename = path.replace('/image/', '');
+        const filename = path.替换('/image/', '');
         const imageUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/${env.IMAGE_PATH}/${filename}`;
 
         const imageRes = await fetch(imageUrl, {
@@ -52,7 +52,7 @@ export default {
     // Proxy Image (Public Access) - New images from photo repo
     if (path.startsWith('/img/')) {
         const filename = path.replace('/img/', '');
-        const PHOTO_OWNER = 'ImUpXuu';
+        const PHOTO_OWNER = 'lishanganshijie-hue';
         const PHOTO_REPO = 'photo';
         const PHOTO_BRANCH = 'main';
         const PHOTO_PATH = 'images';
@@ -127,7 +127,7 @@ export default {
         // Auto submit to IndexNow
         if (updateRes.status === 200 || updateRes.status === 201) {
             const slug = filename.replace(/\.md$/, '');
-            const postUrl = `https://upxuu.com/posts/${slug}`;
+            const postUrl = `https://blogo.ccwu.cc/posts/${slug}`;
             
             // Note: We need to clone the response if we want to read its body, 
             // but updateGitHubFile returns a new Response object which we can modify directly if we built it.
@@ -149,9 +149,9 @@ export default {
                             'Host': 'api.indexnow.org'
                         },
                         body: JSON.stringify({
-                            "host": "upxuu.com",
+                            "host": "blogo.ccwu.cc",
                             "key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-                            "keyLocation": "https://upxuu.com/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt",
+                            "keyLocation": "https://blogo.ccwu.cc/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt",
                             "urlList": [ postUrl ]
                         })
                     });
@@ -200,7 +200,7 @@ export default {
       // Upload Image
       if (apiPath === '/upload' && request.method === 'POST') {
           const body = await request.json(); // { filename, content: base64 }
-          const PHOTO_OWNER = 'ImUpXuu';
+          const PHOTO_OWNER = 'lishanganshijie-hue';
           const PHOTO_REPO = 'photo';
           const PHOTO_BRANCH = 'main';
           const PHOTO_PATH = 'images';
@@ -453,7 +453,7 @@ async function listGitHubImages(env, path) {
 }
 
 async function listPhotoImages(env) {
-    const PHOTO_OWNER = 'ImUpXuu';
+    const PHOTO_OWNER = 'lishanganshijie-hue';
     const PHOTO_REPO = 'photo';
     const PHOTO_BRANCH = 'main';
     const PHOTO_PATH = 'images';
@@ -524,7 +524,7 @@ async function listPhotoImages(env) {
 }
 
 async function deletePhotoImage(env, filename, sha) {
-    const PHOTO_OWNER = 'ImUpXuu';
+    const PHOTO_OWNER = 'lishanganshijie-hue';
     const PHOTO_REPO = 'photo';
     const PHOTO_BRANCH = 'main';
     const PHOTO_PATH = 'images';
