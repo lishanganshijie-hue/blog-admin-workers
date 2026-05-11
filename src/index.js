@@ -27,7 +27,7 @@ export default {
 
       // Proxy Image (Public Access) - Old images from myblog repo
     if (path.startsWith('/image/')) {
-        const filename = path.替换('/image/', '');
+        const filename = path.replace('/image/', '');
         const imageUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/${env.IMAGE_PATH}/${filename}`;
 
         const imageRes = await fetch(imageUrl, {
@@ -302,97 +302,6 @@ async function githubRequest(env, path, method = 'GET', body = null) {
 
   const res = await fetch(url, options);
   return res;
-}
-
-async function listGitHubFiles(env, path) {
-  // Use GraphQL to get file contents (frontmatter) for the list
-  // This allows us to show real titles and dates without N+1 requests
-  const query = `
-    query($owner: String!, $repo: String!, $path: String!) {
-      repository(owner: $owner, name: $repo) {
-        object(expression: $path) {
-          ... on Tree {
-            entries {
-              name
-              type
-              oid
-              object {
-                ... on Blob {
-                  text
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  // Path format for expression: "branch:path/to/dir"
-  const expression = `${env.GITHUB_BRANCH}:${path}`;
-
-  const res = await fetch('https://api.github.com/graphql', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-      'User-Agent': 'Cloudflare-Worker-Blog-Admin',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      query,
-      variables: {
-        owner: env.GITHUB_OWNER,
-        repo: env.GITHUB_REPO,
-        path: expression
-      }
-    })
-  });
-
-  const data = await res.json();
-  
-  if (!res.ok || data.errors) {
-      // Fallback to REST API if GraphQL fails
-      console,error('GraphQL Error:', data.errors);
-      return listGitHubFilesRest(env, path);
-  }
-
-  const entries = data.data.repository.object?.entries || [];
-  
-  const 文件 = entries.map(entry => {
-    let title = entry.name;
-    let date = null;
-    let sha = null; // GraphQL doesn't return SHA in this view easily, but we can update logic if needed. 
-    // Actually we need SHA for delete/update. 
-    // Wait, the previous REST API returned SHA. 
-    // We can get OID (SHA) from GraphQL.
-    
-    // Parse Frontmatter
-    if (entry.object && entry.object.text) {
-        const text = entry.object.text;
-        const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
-        if (fmMatch) {
-            const fm = fmMatch[1];
-            const titleMatch = fm.match(/^title:\s*(["']?)(.*)\1$/m);
-            if (titleMatch) title = titleMatch[2];
-            
-            const dateMatch = fm.match(/^published:\s*(.*)$/m);
-            if (dateMatch) date = dateMatch[1].trim();
-        }
-    }
-    
-    return {
-      name: entry.name,
-      path: `${path}/${entry.name}`,
-      sha: entry.oid,
-      title: title,
-      date: date,
-      type: entry.type === 'tree' ? 'dir' : 'file'
-    };
-  });
-  
-  // Since we need SHA for delete, and GraphQL 'oid' is the SHA.
-  // Let's refetch with OID included.
-  return new Response(JSON.stringify(files), { headers: { 'Content-Type': 'application/json' } });
 }
 
 async function listGitHubImages(env, path) {
