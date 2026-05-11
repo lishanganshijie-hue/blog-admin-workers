@@ -352,7 +352,7 @@ async function listGitHubFiles(env, path) {
   
   if (!res.ok || data.errors) {
       // Fallback to REST API if GraphQL fails
-      console。error('GraphQL Error:', data.errors);
+      console,error('GraphQL Error:', data.errors);
       return listGitHubFilesRest(env, path);
   }
 
