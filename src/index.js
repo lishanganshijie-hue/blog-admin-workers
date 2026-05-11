@@ -5,7 +5,6 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     
-    // 1. 跨域头设置
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -16,14 +15,12 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // 2. 路由控制：访问后台界面
     if (path === '/' || path === '/admin' || path === '/new' || path === '/list' || path === '/gallery' || path === '/settings' || path.startsWith('/edit/')) {
       return new Response(ADMIN_HTML, {
         headers: { 'Content-Type': 'text/html' },
       });
     }
 
-    // 3. 图像代理逻辑 (Public Access)
     if (path.startsWith('/image/') || path.startsWith('/img/')) {
         const isNewRepo = path.startsWith('/img/');
         const filename = isNewRepo ? path.replace('/img/', '') : path.replace('/image/', '');
@@ -53,9 +50,7 @@ export default {
         return new Response(imageRes.body, { status: imageRes.status, headers: newHeaders });
     }
 
-    // 4. API 接口逻辑
     if (path.startsWith('/api/')) {
-      // 鉴权
       const authHeader = request.headers.get('Authorization');
       if (!authHeader || authHeader !== `Bearer ${env.ADMIN_PASSWORD}`) {
         return new Response('Unauthorized', { status: 401, headers: corsHeaders });
@@ -63,90 +58,81 @@ export default {
 
       const apiPath = path.replace('/api', '');
 
-      // --- [核心优化] 获取文章列表 ---
+      // --- [核心优化] 获取文章列表：解决文件夹层级显示问题 ---
       if ((apiPath === '/posts' || apiPath === '/list') && request.method === 'GET') {
         const staticIndexUrl = `https://upxuu.com/posts-index.json`;
         try {
           const indexRes = await fetch(staticIndexUrl, { 
             headers: { 'User-Agent': 'Cloudflare-Worker-FastFetch' },
-            cf: { cacheTtl: 60 } // 让 Cloudflare 缓存这个索引 1 分钟，进一步加速
+            cf: { cacheTtl: 60 }
           });
 
           if (indexRes.ok) {
             const indexData = await indexRes.json();
-            // --- 替换为这个 ---
             const formatted = indexData.map(post => {
               const fileName = post.path.split('/').pop();
               return {
                 name: fileName,
-                // 🟢 重点：直接使用文件名作为 path，或者保持和 JSON 一致
-                // 很多后台前端逻辑是通过文件名来匹配的
+                // 重点：这里只给文件名，不带斜杠，骗过后台前端的过滤逻辑
                 path: fileName, 
                 title: post.title,
                 category: post.category,
                 date: post.date || null,
-                sha: "static-index-placeholder", // 🟢 给一个占位符，防止前端因缺少 sha 而报错
-                type: 'file',
-                fullPath: `src/content/posts/${post.path}` // 留一个完整路径备用
+                // 将真实路径编码进 sha 字段，或者保留 placeholder
+                sha: "static-index-placeholder", 
+                type: 'file'
               };
             });
-            // 按日期排序
             formatted.sort((a, b) => (b.date && a.date) ? new Date(b.date) - new Date(a.date) : 0);
             return new Response(JSON.stringify(formatted), { 
               headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-Source': 'Static-Index' } 
             });
           }
         } catch (e) { 
-          console.error("Index fetch failed, falling back...", e); 
+          console.error("Index fetch failed", e); 
         }
-        // 保底逻辑
         return await listGitHubFiles(env, env.POSTS_PATH);
       }
 
-      // 获取单篇文章内容
+      // --- [适配修改] 获取单篇文章：支持子目录查找 ---
       if (apiPath.startsWith('/post/') && request.method === 'GET') {
         const filename = decodeURIComponent(apiPath.replace('/post/', ''));
-        return await getGitHubFile(env, `${env.POSTS_PATH}/${filename}`);
+        const realPath = await findRealPath(filename);
+        return await getGitHubFile(env, realPath || `${env.POSTS_PATH}/${filename}`);
       }
 
-      // 创建或更新文章
+      // --- [适配修改] 更新/保存文章：支持子目录保存 ---
       if (apiPath.startsWith('/post/') && request.method === 'PUT') {
         const filename = decodeURIComponent(apiPath.replace('/post/', ''));
         const body = await request.json();
+        const realPath = await findRealPath(filename) || `${env.POSTS_PATH}/${filename}`;
+        
         let sha = body.sha;
-        if (!sha) {
-          const checkRes = await githubRequest(env, `${env.POSTS_PATH}/${filename}`);
+        if (!sha || sha === "static-index-placeholder") {
+          const checkRes = await githubRequest(env, realPath);
           if (checkRes.ok) { sha = (await checkRes.json()).sha; }
         }
-        return await updateGitHubFile(env, `${env.POSTS_PATH}/${filename}`, body.content, sha, `Update ${filename} via Admin`);
+        return await updateGitHubFile(env, realPath, body.content, sha, `Update ${filename} via Admin`);
       }
 
-      // 删除文章
+      // --- [适配修改] 删除文章 ---
       if (apiPath.startsWith('/post/') && request.method === 'DELETE') {
         const filename = decodeURIComponent(apiPath.replace('/post/', ''));
         const body = await request.json();
-        return await deleteGitHubFile(env, `${env.POSTS_PATH}/${filename}`, body.sha, `Delete ${filename} via Admin`);
+        const realPath = await findRealPath(filename) || `${env.POSTS_PATH}/${filename}`;
+        return await deleteGitHubFile(env, realPath, body.sha, `Delete ${filename} via Admin`);
       }
 
-      // 获取图片库列表 (photo 仓库)
-      if (apiPath === '/images' && request.method === 'GET') {
-        return await listPhotoImages(env);
-      }
-
-      // 上传图片 (photo 仓库)
-      if (apiPath === '/upload' && request.method === 'POST') {
+      if (apiPath === '/images') return await listPhotoImages(env);
+      if (apiPath === '/upload') {
         const body = await request.json();
         return await uploadPhotoImage(env, body.filename, body.content, url.origin);
       }
-
-      // 删除图片 (photo 仓库)
       if (apiPath.startsWith('/img/') && request.method === 'DELETE') {
         const filename = decodeURIComponent(apiPath.replace('/img/', ''));
         const body = await request.json();
         return await deletePhotoImage(env, filename, body.sha);
       }
-
-      // 获取/更新博客配置 (config.ts / Layout.astro)
       if (apiPath === '/settings') {
         if (request.method === 'GET') return await getSettings(env);
         if (request.method === 'PUT') {
@@ -156,12 +142,25 @@ export default {
         }
       }
     }
-
     return new Response('Not Found', { status: 404 });
   },
 };
 
-// --- 辅助执行函数 ---
+// --- [新增辅助函数]：通过文件名从 JSON 索引找回真实路径 ---
+async function findRealPath(filename) {
+    try {
+        const res = await fetch(`https://upxuu.com/posts-index.json`);
+        if (res.ok) {
+            const data = await res.json();
+            // 在 JSON 中匹配文件名相同的项
+            const match = data.find(p => p.path.split('/').pop() === filename);
+            if (match) return `src/content/posts/${match.path}`;
+        }
+    } catch (e) { console.error("Find real path failed", e); }
+  return null;
+}
+
+// --- 基础辅助函数 ---
 
 async function githubRequest(env, path, method = 'GET', body = null) {
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
@@ -195,7 +194,7 @@ async function updateGitHubFile(env, path, content, sha, message) {
   for (let i = 0; i < uint8Array.length; i++) binaryString += String.fromCharCode(uint8Array[i]);
   const base64Content = btoa(binaryString);
   const body = { message, content: base64Content, branch: env.GITHUB_BRANCH };
-  if (sha) body.sha = sha;
+  if (sha && sha !== "static-index-placeholder") body.sha = sha;
   const res = await githubRequest(env, path, 'PUT', body);
   return new Response(JSON.stringify(await res.json()), { status: res.status });
 }
@@ -205,8 +204,6 @@ async function deleteGitHubFile(env, path, sha, message) {
     const res = await githubRequest(env, path, 'DELETE', body);
     return new Response(JSON.stringify(await res.json()), { status: res.status });
 }
-
-// --- 图片库专属函数 (photo 仓库) ---
 
 async function listPhotoImages(env) {
   const res = await fetch(`https://api.github.com/repos/ImUpXuu/photo/contents/images?ref=main`, {
@@ -257,8 +254,6 @@ async function deletePhotoImage(env, filename, sha) {
   return new Response(JSON.stringify(await res.json()), { status: res.status });
 }
 
-// --- 设置管理函数 ---
-
 async function getSettings(env) {
   const configRes = await githubRequest(env, 'src/config.ts');
   const layoutRes = await githubRequest(env, 'src/layouts/Layout.astro');
@@ -272,7 +267,6 @@ async function getSettings(env) {
   }), { headers: { 'Content-Type': 'application/json' } });
 }
 
-// 慢速扫描函数（作为最后防线保留）
 async function listGitHubFiles(env, path) {
   const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${path}?ref=${env.GITHUB_BRANCH}`;
   const res = await fetch(url, {
@@ -285,7 +279,7 @@ async function listGitHubFiles(env, path) {
   const data = await res.json();
   if (!res.ok) return new Response(JSON.stringify(data), { status: res.status });
   const files = Array.isArray(data) ? data.filter(f => f.name.endsWith('.md')).map(f => ({
-    name: f.name, path: f.path, sha: f.sha, title: f.name, date: null, type: 'file'
+    name: f.name, path: f.name, sha: f.sha, title: f.name, date: null, type: 'file'
   })) : [];
   return new Response(JSON.stringify(files), { headers: { 'Content-Type': 'application/json' } });
 }
