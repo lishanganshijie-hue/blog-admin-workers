@@ -352,13 +352,13 @@ async function listGitHubFiles(env, path) {
   
   if (!res.ok || data.errors) {
       // Fallback to REST API if GraphQL fails
-      console.error('GraphQL Error:', data.errors);
+      console。error('GraphQL Error:', data.errors);
       return listGitHubFilesRest(env, path);
   }
 
   const entries = data.data.repository.object?.entries || [];
   
-  const files = entries.map(entry => {
+  const 文件 = entries.map(entry => {
     let title = entry.name;
     let date = null;
     let sha = null; // GraphQL doesn't return SHA in this view easily, but we can update logic if needed. 
@@ -452,77 +452,145 @@ async function listGitHubImages(env, path) {
     return new Response(JSON.stringify(images), { headers: { 'Content-Type': 'application/json' } });
 }
 
-async function listPhotoImages(env) {
-    const PHOTO_OWNER = 'ImUpXuu';
-    const PHOTO_REPO = 'photo';
-    const PHOTO_BRANCH = 'main';
-    const PHOTO_PATH = 'images';
+async function listGitHubFiles(env, path) {
+
+  async function getEntries(targetPath) {
 
     const query = `
       query($owner: String!, $repo: String!, $path: String!) {
         repository(owner: $owner, name: $repo) {
           object(expression: $path) {
             ... on Tree {
-               entries {
-                 name
-                 type
-                 oid
-               }
+              entries {
+                name
+                type
+                oid
+                object {
+                  ... on Blob {
+                    text
+                  }
+                }
+              }
             }
           }
         }
       }
     `;
 
-    async function getEntries(path) {
-        const expression = `${PHOTO_BRANCH}:${path}`;
-        const res = await fetch('https://api.github.com/graphql', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-            'User-Agent': 'Cloudflare-Worker-Blog-Admin',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query,
-            variables: {
-              owner: PHOTO_OWNER,
-              repo: PHOTO_REPO,
-              path: expression
-            }
-          })
-        });
-        const data = await res.json();
-        return data.data?.repository?.object?.entries || [];
-    }
+    const expression = `${env.GITHUB_BRANCH}:${targetPath}`;
 
-    async function getImagesRecursive(basePath) {
-        const entries = await getEntries(basePath);
-        const images = [];
+    const res = await fetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+        'User-Agent': 'Cloudflare-Worker-Blog-Admin',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        variables: {
+          owner: env.GITHUB_OWNER,
+          repo: env.GITHUB_REPO,
+          path: expression
+        }
+      })
+    });
 
-        for (const entry of entries) {
-            if (entry.type === 'blob') {
-                if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(entry.name)) {
-                    const fullPath = `${basePath}/${entry.name}`.replace(`${PHOTO_PATH}/`, '');
-                    images.push({
-                        name: entry.name,
-                        path: fullPath,
-                        sha: entry.oid
-                    });
-                }
-            } else if (entry.type === 'tree') {
-                const subImages = await getImagesRecursive(`${basePath}/${entry.name}`);
-                images.push(...subImages);
+    const data = await res.json();
+
+    return data.data?.repository?.object?.entries || [];
+  }
+
+  async function scanDir(currentPath) {
+
+    const entries = await getEntries(currentPath);
+
+    let results = [];
+
+    for (const entry of entries) {
+
+      // 进入子目录递归扫描
+      if (entry.type === 'tree') {
+
+        const subResults = await scanDir(`${currentPath}/${entry.name}`);
+
+        results.push(...subResults);
+      }
+
+      // markdown 文件
+      if (
+        entry.type === 'blob' &&
+        entry.name.toLowerCase().endsWith('.md')
+      ) {
+
+        let title = entry.name;
+        let date = null;
+
+        // frontmatter 解析
+        if (entry.object?.text) {
+
+          const text = entry.object.text;
+
+          const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+
+          if (fmMatch) {
+
+            const fm = fmMatch[1];
+
+            // title
+            const titleMatch = fm.match(/^title:\s*(["']?)(.*)\1$/m);
+
+            if (titleMatch && titleMatch[2]) {
+              title = titleMatch[2].trim();
             }
+
+            // published
+            const dateMatch = fm.match(/^published:\s*(.*)$/m);
+
+            if (dateMatch && dateMatch[1]) {
+              date = dateMatch[1].trim();
+            }
+          }
         }
 
-        return images;
+        results.push({
+          name: entry.name,
+
+          // 完整路径
+          path: `${currentPath}/${entry.name}`,
+
+          sha: entry.oid,
+
+          title: title,
+
+          date: date,
+
+          type: 'file'
+        });
+      }
     }
 
-    const allImages = await getImagesRecursive(PHOTO_PATH);
-    return new Response(JSON.stringify(allImages), { headers: { 'Content-Type': 'application/json' } });
-}
+    return results;
+  }
 
+  const files = await scanDir(path);
+
+  // 按日期倒序
+  files.sort((a, b) => {
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return new Date(b.date) - new Date(a.date);
+  });
+
+  return new Response(
+    JSON.stringify(files),
+    {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+}
 async function deletePhotoImage(env, filename, sha) {
     const PHOTO_OWNER = 'ImUpXuu';
     const PHOTO_REPO = 'photo';
