@@ -23,8 +23,11 @@
 - 🔒 安全认证 + CAPTCHA 验证
 - 📱 移动端优化，智能固定布局
 - 🔍 IndexNow 自动提交（Bing 搜索引擎）
-- 递归获取所有子目录中的md文章
 - 所有请求均通过worker代理发送 无畏网络问题！
+## 20260511新增功能
+- 优先极速获取posts-index.json的文章目录
+- 其次保底递归获取所有子目录中的md文章（较慢但稳）
+
 ## 技术栈
 
 - **前端**：原生 JavaScript + TailwindCSS + Vditor
