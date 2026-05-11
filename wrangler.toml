@@ -4,7 +4,7 @@ compatibility_date = "2023-12-01"
 
 [vars]
 GITHUB_OWNER = "lishanganshijie-hue"
-GITHUB_REPO = "firefly-astro0509"
+GITHUB_REPO = "leehenry-blog-astro"
 GITHUB_BRANCH = "main"
 POSTS_PATH = "src/content/posts"
 IMAGE_PATH = "images"
