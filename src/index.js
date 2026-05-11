@@ -1,4 +1,3 @@
-
 import { ADMIN_HTML } from './html.js';
 
 export default {
@@ -6,7 +5,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     
-    // CORS headers
+    // 1. 跨域头设置
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -17,49 +16,26 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Serve Admin HTML
-    // Support client-side routing: /, /admin, /new, /list, /gallery, /settings, /edit/*
+    // 2. 路由控制：访问后台界面
     if (path === '/' || path === '/admin' || path === '/new' || path === '/list' || path === '/gallery' || path === '/settings' || path.startsWith('/edit/')) {
       return new Response(ADMIN_HTML, {
         headers: { 'Content-Type': 'text/html' },
       });
     }
 
-      // Proxy Image (Public Access) - Old images from myblog repo
-    if (path.startsWith('/image/')) {
-        const filename = path.replace('/image/', '');
-        const imageUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/${env.IMAGE_PATH}/${filename}`;
-
-        const imageRes = await fetch(imageUrl, {
-            headers: {
-                'User-Agent': 'Cloudflare-Worker-Blog-Admin',
-                'Authorization': `Bearer ${env.GITHUB_TOKEN}` // Use token for private repos
-            }
-        });
-
-        if (!imageRes.ok) return new Response('Image not found', { status: 404 });
-
-        const newHeaders = new Headers(imageRes.headers);
-        newHeaders.set('Access-Control-Allow-Origin', '*');
-        newHeaders.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-
-        return new Response(imageRes.body, {
-            status: imageRes.status,
-            headers: newHeaders
-        });
-    }
-
-    // Proxy Image (Public Access) - New images from photo repo
-    if (path.startsWith('/img/')) {
-        const filename = path.replace('/img/', '');
-        const PHOTO_OWNER = 'ImUpXuu';
-        const PHOTO_REPO = 'photo';
-        const PHOTO_BRANCH = 'main';
-        const PHOTO_PATH = 'images';
-
-        // Encode each path segment to handle year/month/day structure
-        const encodedPath = filename.split('/').map(encodeURIComponent).join('/');
-        const imageUrl = `https://raw.githubusercontent.com/${PHOTO_OWNER}/${PHOTO_REPO}/${PHOTO_BRANCH}/${PHOTO_PATH}/${encodedPath}`;
+    // 3. 图像代理逻辑 (Public Access)
+    if (path.startsWith('/image/') || path.startsWith('/img/')) {
+        const isNewRepo = path.startsWith('/img/');
+        const filename = isNewRepo ? path.replace('/img/', '') : path.replace('/image/', '');
+        
+        let imageUrl;
+        if (isNewRepo) {
+            const PHOTO_PATH = 'images';
+            const encodedPath = filename.split('/').map(encodeURIComponent).join('/');
+            imageUrl = `https://raw.githubusercontent.com/ImUpXuu/photo/main/${PHOTO_PATH}/${encodedPath}`;
+        } else {
+            imageUrl = `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/${env.IMAGE_PATH}/${filename}`;
+        }
 
         const imageRes = await fetch(imageUrl, {
             headers: {
@@ -74,15 +50,12 @@ export default {
         newHeaders.set('Access-Control-Allow-Origin', '*');
         newHeaders.set('Cache-Control', 'public, max-age=31536000');
 
-        return new Response(imageRes.body, {
-            status: imageRes.status,
-            headers: newHeaders
-        });
+        return new Response(imageRes.body, { status: imageRes.status, headers: newHeaders });
     }
 
-    // API Routes
+    // 4. API 接口逻辑
     if (path.startsWith('/api/')) {
-      // Auth check
+      // 鉴权
       const authHeader = request.headers.get('Authorization');
       if (!authHeader || authHeader !== `Bearer ${env.ADMIN_PASSWORD}`) {
         return new Response('Unauthorized', { status: 401, headers: corsHeaders });
@@ -90,194 +63,90 @@ export default {
 
       const apiPath = path.replace('/api', '');
 
-      // List Posts
+      // --- [核心优化] 获取文章列表 ---
       if ((apiPath === '/posts' || apiPath === '/list') && request.method === 'GET') {
+        const staticIndexUrl = `https://upxuu.com/posts-index.json`;
+        try {
+          const indexRes = await fetch(staticIndexUrl, { 
+            headers: { 'User-Agent': 'Cloudflare-Worker-FastFetch' },
+            cf: { cacheTtl: 60 } // 让 Cloudflare 缓存这个索引 1 分钟，进一步加速
+          });
+
+          if (indexRes.ok) {
+            const indexData = await indexRes.json();
+            const formatted = indexData.map(post => ({
+              name: post.path.split('/').pop(),
+              path: `src/content/posts/${post.path}`,
+              title: post.title,
+              category: post.category,
+              date: post.date || null,
+              sha: "", 
+              type: 'file'
+            }));
+            // 按日期排序
+            formatted.sort((a, b) => (b.date && a.date) ? new Date(b.date) - new Date(a.date) : 0);
+            return new Response(JSON.stringify(formatted), { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json', 'X-Source': 'Static-Index' } 
+            });
+          }
+        } catch (e) { 
+          console.error("Index fetch failed, falling back...", e); 
+        }
+        // 保底逻辑
         return await listGitHubFiles(env, env.POSTS_PATH);
       }
 
-      // List Images (from photo repo)
-      if (apiPath === '/images' && request.method === 'GET') {
-        return await listPhotoImages(env);
-      }
-
-      // Get Post
+      // 获取单篇文章内容
       if (apiPath.startsWith('/post/') && request.method === 'GET') {
         const filename = decodeURIComponent(apiPath.replace('/post/', ''));
         return await getGitHubFile(env, `${env.POSTS_PATH}/${filename}`);
       }
 
-      // Create/Update Post
+      // 创建或更新文章
       if (apiPath.startsWith('/post/') && request.method === 'PUT') {
         const filename = decodeURIComponent(apiPath.replace('/post/', ''));
         const body = await request.json();
-        
         let sha = body.sha;
-        
-        // Safety check: if no sha provided, check if file exists to get sha (avoid "sha wasn't supplied" error)
         if (!sha) {
-            const checkRes = await githubRequest(env, `${env.POSTS_PATH}/${filename}`);
-            if (checkRes.ok) {
-                const existing = await checkRes.json();
-                sha = existing.sha;
-            }
+          const checkRes = await githubRequest(env, `${env.POSTS_PATH}/${filename}`);
+          if (checkRes.ok) { sha = (await checkRes.json()).sha; }
         }
-        
-        const updateRes = await updateGitHubFile(env, `${env.POSTS_PATH}/${filename}`, body.content, sha, `Update ${filename} via Admin`);
-        
-        // Auto submit to IndexNow
-        if (updateRes.status === 200 || updateRes.status === 201) {
-            const slug = filename.replace(/\.md$/, '');
-            const postUrl = `https://upxuu.com/posts/${slug}`;
-            
-            // Note: We need to clone the response if we want to read its body, 
-            // but updateGitHubFile returns a new Response object which we can modify directly if we built it.
-            // However, updateRes is already built.
-            // To add data to it, we should parse it, add data, and rebuild response.
-            
-            const data = await updateRes.json();
-            
-            // Add IndexNow status to response
-            data.indexNow = { status: 'pending', url: postUrl };
-            
-            ctx.waitUntil((async () => {
-                console.log(`[IndexNow] Starting submission for: ${postUrl}`);
-                try {
-                    const indexNowRes = await fetch('https://api.indexnow.org/indexnow', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json; charset=utf-8',
-                            'Host': 'api.indexnow.org'
-                        },
-                        body: JSON.stringify({
-                            "host": "upxuu.com",
-                            "key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-                            "keyLocation": "https://upxuu.com/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt",
-                            "urlList": [ postUrl ]
-                        })
-                    });
-                    
-                    if (indexNowRes.ok) {
-                        console.log(`[IndexNow] Success: ${postUrl}`);
-                    } else {
-                        const errText = await indexNowRes.text();
-                        console.error(`[IndexNow] Failed: ${indexNowRes.status} ${indexNowRes.statusText} - ${errText}`);
-                    }
-                } catch (err) {
-                    console.error('[IndexNow] Exception:', err);
-                }
-            })());
-            
-            return new Response(JSON.stringify(data), { 
-                status: updateRes.status,
-                headers: updateRes.headers
-            });
-        }
-        
-        return updateRes;
+        return await updateGitHubFile(env, `${env.POSTS_PATH}/${filename}`, body.content, sha, `Update ${filename} via Admin`);
       }
-      
-      // Delete Post
+
+      // 删除文章
       if (apiPath.startsWith('/post/') && request.method === 'DELETE') {
-         const filename = decodeURIComponent(apiPath.replace('/post/', ''));
-         const body = await request.json();
-         return await deleteGitHubFile(env, `${env.POSTS_PATH}/${filename}`, body.sha, `Delete ${filename} via Admin`);
+        const filename = decodeURIComponent(apiPath.replace('/post/', ''));
+        const body = await request.json();
+        return await deleteGitHubFile(env, `${env.POSTS_PATH}/${filename}`, body.sha, `Delete ${filename} via Admin`);
       }
 
-      // Delete Image
-      if (apiPath.startsWith('/image/') && request.method === 'DELETE') {
-         const filename = decodeURIComponent(apiPath.replace('/image/', ''));
-         const body = await request.json();
-         return await deleteGitHubFile(env, `${env.IMAGE_PATH}/${filename}`, body.sha, `Delete image ${filename} via Admin`);
-      }
-      
-      // Delete Image (new photo repo)
-      if (apiPath.startsWith('/img/') && request.method === 'DELETE') {
-         const filename = decodeURIComponent(apiPath.replace('/img/', ''));
-         const body = await request.json();
-         return await deletePhotoImage(env, filename, body.sha);
+      // 获取图片库列表 (photo 仓库)
+      if (apiPath === '/images' && request.method === 'GET') {
+        return await listPhotoImages(env);
       }
 
-      // Upload Image
+      // 上传图片 (photo 仓库)
       if (apiPath === '/upload' && request.method === 'POST') {
-          const body = await request.json(); // { filename, content: base64 }
-          const PHOTO_OWNER = 'ImUpXuu';
-          const PHOTO_REPO = 'photo';
-          const PHOTO_BRANCH = 'main';
-          const PHOTO_PATH = 'images';
-          const path = `${PHOTO_PATH}/${body.filename}`;
-
-          // DIRECTLY upload to GitHub with provided base64 content
-          // Do NOT use updateGitHubFile because it attempts to re-encode UTF-8, corrupting binaries
-
-          const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-          const ghUrl = `https://api.github.com/repos/${PHOTO_OWNER}/${PHOTO_REPO}/contents/${encodedPath}?ref=${PHOTO_BRANCH}`;
-          const ghHeaders = {
-              'User-Agent': 'Cloudflare-Worker-Blog-Admin',
-              'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-              'Accept': 'application/vnd.github.v3+json',
-          };
-
-          const ghBody = {
-            message: `Upload image ${body.filename}`,
-            content: body.content, // Already base64 from frontend
-            branch: PHOTO_BRANCH
-          };
-
-          const ghRes = await fetch(ghUrl, {
-              method: 'PUT',
-              headers: ghHeaders,
-              body: JSON.stringify(ghBody)
-          });
-
-          if (ghRes.status === 200 || ghRes.status === 201) {
-              const workerUrl = url.origin;
-              return new Response(JSON.stringify({
-                  url: `${workerUrl}/img/${body.filename}`
-              }), { headers: corsHeaders });
-          }
-
-          const err = await ghRes.json();
-          return new Response(JSON.stringify(err), { status: ghRes.status });
+        const body = await request.json();
+        return await uploadPhotoImage(env, body.filename, body.content, url.origin);
       }
 
-      // Get Settings Files
-      if (apiPath === '/settings' && request.method === 'GET') {
-          const configRes = await githubRequest(env, 'src/config.ts');
-          const layoutRes = await githubRequest(env, 'src/layouts/Layout.astro');
-          
-          if (!configRes.ok || !layoutRes.ok) {
-              return new Response('Failed to fetch settings files', { status: 500 });
-          }
-          
-          const configData = await configRes.json();
-          const layoutData = await layoutRes.json();
-          
-          const decode = (base64) => {
-              const bin = atob(base64.replace(/\n/g, ''));
-              return new TextDecoder('utf-8').decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
-          };
-          
-          return new Response(JSON.stringify({
-              config: {
-                  content: decode(configData.content),
-                  sha: configData.sha
-              },
-              layout: {
-                  content: decode(layoutData.content),
-                  sha: layoutData.sha
-              }
-          }), { headers: { 'Content-Type': 'application/json' } });
+      // 删除图片 (photo 仓库)
+      if (apiPath.startsWith('/img/') && request.method === 'DELETE') {
+        const filename = decodeURIComponent(apiPath.replace('/img/', ''));
+        const body = await request.json();
+        return await deletePhotoImage(env, filename, body.sha);
       }
-      
-      // Update Settings File
-      if (apiPath === '/settings' && request.method === 'PUT') {
+
+      // 获取/更新博客配置 (config.ts / Layout.astro)
+      if (apiPath === '/settings') {
+        if (request.method === 'GET') return await getSettings(env);
+        if (request.method === 'PUT') {
           const body = await request.json();
-          let path = '';
-          if (body.file === 'config') path = 'src/config.ts';
-          else if (body.file === 'layout') path = 'src/layouts/Layout.astro';
-          else return new Response('Invalid file type', { status: 400 });
-          
-          return await updateGitHubFile(env, path, body.content, body.sha, `Update ${body.file} via Admin Settings`);
+          const targetPath = body.file === 'config' ? 'src/config.ts' : 'src/layouts/Layout.astro';
+          return await updateGitHubFile(env, targetPath, body.content, body.sha, `Update ${body.file} via Admin`);
+        }
       }
     }
 
@@ -285,10 +154,9 @@ export default {
   },
 };
 
-// GitHub API Helpers
+// --- 辅助执行函数 ---
+
 async function githubRequest(env, path, method = 'GET', body = null) {
-  // Ensure path is encoded, but don't double encode slashes if they are path separators
-  // The best way is to encode each segment
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
   const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${encodedPath}?ref=${env.GITHUB_BRANCH}`;
   const headers = {
@@ -296,246 +164,121 @@ async function githubRequest(env, path, method = 'GET', body = null) {
     'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
     'Accept': 'application/vnd.github.v3+json',
   };
-
   const options = { method, headers };
   if (body) options.body = JSON.stringify(body);
-
-  const res = await fetch(url, options);
-  return res;
-}
-
-async function listGitHubFiles(env, path) {
-
-  async function getEntries(targetPath) {
-
-    const query = `
-      query($owner: String!, $repo: String!, $path: String!) {
-        repository(owner: $owner, name: $repo) {
-          object(expression: $path) {
-            ... on Tree {
-              entries {
-                name
-                type
-                oid
-                object {
-                  ... on Blob {
-                    text
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    const expression = `${env.GITHUB_BRANCH}:${targetPath}`;
-
-    const res = await fetch('https://api.github.com/graphql', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-        'User-Agent': 'Cloudflare-Worker-Blog-Admin',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        variables: {
-          owner: env.GITHUB_OWNER,
-          repo: env.GITHUB_REPO,
-          path: expression
-        }
-      })
-    });
-
-    const data = await res.json();
-
-    return data.data?.repository?.object?.entries || [];
-  }
-
-  async function scanDir(currentPath) {
-
-    const entries = await getEntries(currentPath);
-
-    let results = [];
-
-    for (const entry of entries) {
-
-      // 进入子目录递归扫描
-      if (entry.type === 'tree') {
-
-        const subResults = await scanDir(`${currentPath}/${entry.name}`);
-
-        results.push(...subResults);
-      }
-
-      // markdown 文件
-      if (
-        entry.type === 'blob' &&
-        entry.name.toLowerCase().endsWith('.md')
-      ) {
-
-        let title = entry.name;
-        let date = null;
-
-        // frontmatter 解析
-        if (entry.object?.text) {
-
-          const text = entry.object.text;
-
-          const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
-
-          if (fmMatch) {
-
-            const fm = fmMatch[1];
-
-            // title
-            const titleMatch = fm.match(/^title:\s*(["']?)(.*)\1$/m);
-
-            if (titleMatch && titleMatch[2]) {
-              title = titleMatch[2].trim();
-            }
-
-            // published
-            const dateMatch = fm.match(/^published:\s*(.*)$/m);
-
-            if (dateMatch && dateMatch[1]) {
-              date = dateMatch[1].trim();
-            }
-          }
-        }
-
-        results.push({
-          name: entry.name,
-
-          // 完整路径
-          path: `${currentPath}/${entry.name}`,
-
-          sha: entry.oid,
-
-          title: title,
-
-          date: date,
-
-          type: 'file'
-        });
-      }
-    }
-
-    return results;
-  }
-
-  const files = await scanDir(path);
-
-  // 按日期倒序
-  files.sort((a, b) => {
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    return new Date(b.date) - new Date(a.date);
-  });
-
-  return new Response(
-    JSON.stringify(files),
-    {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-}
-async function deletePhotoImage(env, filename, sha) {
-    const PHOTO_OWNER = 'ImUpXuu';
-    const PHOTO_REPO = 'photo';
-    const PHOTO_BRANCH = 'main';
-    const PHOTO_PATH = 'images';
-    const path = `${PHOTO_PATH}/${filename}`;
-
-    const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-    const ghUrl = `https://api.github.com/repos/${PHOTO_OWNER}/${PHOTO_REPO}/contents/${encodedPath}?ref=${PHOTO_BRANCH}`;
-    const ghHeaders = {
-        'User-Agent': 'Cloudflare-Worker-Blog-Admin',
-        'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-        'Accept': 'application/vnd.github.v3+json',
-    };
-
-    const ghBody = {
-        message: `Delete image ${filename} via Admin`,
-        sha: sha,
-        branch: PHOTO_BRANCH
-    };
-
-    const ghRes = await fetch(ghUrl, {
-        method: 'DELETE',
-        headers: ghHeaders,
-        body: JSON.stringify(ghBody)
-    });
-
-    return new Response(JSON.stringify(await ghRes.json()), { status: ghRes.status });
-}
-
-// Fallback REST function
-async function listGitHubFilesRest(env, path) {
-  const res = await githubRequest(env, path);
-  const data = await res.json();
-  if (!res.ok) return new Response(JSON.stringify(data), { status: res.status });
-  
-  const files = Array.isArray(data) ? data.map(f => ({
-    name: f.name,
-    path: f.path,
-    sha: f.sha,
-    type: f.type,
-    title: f.name, // Fallback
-    date: null
-  })) : [];
-  
-  return new Response(JSON.stringify(files), { headers: { 'Content-Type': 'application/json' } });
+  return await fetch(url, options);
 }
 
 async function getGitHubFile(env, path) {
   const res = await githubRequest(env, path);
+  if (!res.ok) return res;
   const data = await res.json();
-  if (!res.ok) return new Response(JSON.stringify(data), { status: res.status });
-  
-  // Content is base64 encoded
   const content = atob(data.content.replace(/\n/g, ''));
-  // Decode UTF-8 properly
   const decoder = new TextDecoder('utf-8');
-  const rawContent = decoder.decode(Uint8Array.from(content, c => c.charCodeAt(0)));
-  
   return new Response(JSON.stringify({
-    content: rawContent,
+    content: decoder.decode(Uint8Array.from(content, c => c.charCodeAt(0))),
     sha: data.sha
   }), { headers: { 'Content-Type': 'application/json' } });
 }
 
 async function updateGitHubFile(env, path, content, sha, message) {
-  // Encode content to base64 (UTF-8 safe)
   const encoder = new TextEncoder();
   const uint8Array = encoder.encode(content);
   let binaryString = '';
-  for (let i = 0; i < uint8Array.length; i++) {
-    binaryString += String.fromCharCode(uint8Array[i]);
-  }
+  for (let i = 0; i < uint8Array.length; i++) binaryString += String.fromCharCode(uint8Array[i]);
   const base64Content = btoa(binaryString);
-
-  const body = {
-    message: message,
-    content: base64Content,
-    branch: env.GITHUB_BRANCH
-  };
+  const body = { message, content: base64Content, branch: env.GITHUB_BRANCH };
   if (sha) body.sha = sha;
-
   const res = await githubRequest(env, path, 'PUT', body);
-  const data = await res.json();
-  return new Response(JSON.stringify(data), { status: res.status });
+  return new Response(JSON.stringify(await res.json()), { status: res.status });
 }
 
 async function deleteGitHubFile(env, path, sha, message) {
-    const body = {
-        message: message,
-        sha: sha,
-        branch: env.GITHUB_BRANCH
-    };
+    const body = { message, sha, branch: env.GITHUB_BRANCH };
     const res = await githubRequest(env, path, 'DELETE', body);
     return new Response(JSON.stringify(await res.json()), { status: res.status });
+}
+
+// --- 图片库专属函数 (photo 仓库) ---
+
+async function listPhotoImages(env) {
+  const res = await fetch(`https://api.github.com/repos/ImUpXuu/photo/contents/images?ref=main`, {
+    headers: {
+      'User-Agent': 'Cloudflare-Worker-Blog-Admin',
+      'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+      'Accept': 'application/vnd.github.v3+json',
+    }
+  });
+  const data = await res.json();
+  if (!res.ok) return new Response(JSON.stringify(data), { status: res.status });
+  const images = data.filter(f => f.type === 'file' && /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(f.name)).map(f => ({
+    name: f.name, path: f.path, sha: f.sha, url: `/img/${f.name}`
+  }));
+  return new Response(JSON.stringify(images), { headers: { 'Content-Type': 'application/json' } });
+}
+
+async function uploadPhotoImage(env, filename, content, origin) {
+  const path = `images/${filename}`;
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  const url = `https://api.github.com/repos/ImUpXuu/photo/contents/${encodedPath}?ref=main`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'User-Agent': 'Cloudflare-Worker-Blog-Admin',
+      'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+      'Accept': 'application/vnd.github.v3+json',
+    },
+    body: JSON.stringify({ message: `Upload image ${filename}`, content: content, branch: 'main' })
+  });
+  if (res.ok) return new Response(JSON.stringify({ url: `${origin}/img/${filename}` }), { headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify(await res.json()), { status: res.status });
+}
+
+async function deletePhotoImage(env, filename, sha) {
+  const path = `images/${filename}`;
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  const url = `https://api.github.com/repos/ImUpXuu/photo/contents/${encodedPath}?ref=main`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: {
+      'User-Agent': 'Cloudflare-Worker-Blog-Admin',
+      'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+      'Accept': 'application/vnd.github.v3+json',
+    },
+    body: JSON.stringify({ message: `Delete image ${filename} via Admin`, sha, branch: 'main' })
+  });
+  return new Response(JSON.stringify(await res.json()), { status: res.status });
+}
+
+// --- 设置管理函数 ---
+
+async function getSettings(env) {
+  const configRes = await githubRequest(env, 'src/config.ts');
+  const layoutRes = await githubRequest(env, 'src/layouts/Layout.astro');
+  if (!configRes.ok || !layoutRes.ok) return new Response('Fetch failed', { status: 500 });
+  const configData = await configRes.json();
+  const layoutData = await layoutRes.json();
+  const decode = (b64) => new TextDecoder('utf-8').decode(Uint8Array.from(atob(b64.replace(/\n/g, '')), c => c.charCodeAt(0)));
+  return new Response(JSON.stringify({
+    config: { content: decode(configData.content), sha: configData.sha },
+    layout: { content: decode(layoutData.content), sha: layoutData.sha }
+  }), { headers: { 'Content-Type': 'application/json' } });
+}
+
+// 慢速扫描函数（作为最后防线保留）
+async function listGitHubFiles(env, path) {
+  const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${path}?ref=${env.GITHUB_BRANCH}`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Cloudflare-Worker-Blog-Admin',
+      'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+      'Accept': 'application/vnd.github.v3+json',
+    }
+  });
+  const data = await res.json();
+  if (!res.ok) return new Response(JSON.stringify(data), { status: res.status });
+  const files = Array.isArray(data) ? data.filter(f => f.name.endsWith('.md')).map(f => ({
+    name: f.name, path: f.path, sha: f.sha, title: f.name, date: null, type: 'file'
+  })) : [];
+  return new Response(JSON.stringify(files), { headers: { 'Content-Type': 'application/json' } });
 }
