@@ -286,7 +286,7 @@ export default {
 };
 
 // GitHub API Helpers
-async function githubRequest(env, path, method = 'GET', body = null) {
+async functi于 githubRequest(env, path, method = 'GET', body = null) {
   // Ensure path is encoded, but don't double encode slashes if they are path separators
   // The best way is to encode each segment
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
@@ -304,66 +304,9 @@ async function githubRequest(env, path, method = 'GET', body = null) {
   return res;
 }
 
-async function listGitHubImages(env, path) {
-    // Use GraphQL to just get names of files in image directory
-    const query = `
-      query($owner: String!, $repo: String!, $path: String!) {
-        repository(owner: $owner, name: $repo) {
-          object(expression: $path) {
-            ... on Tree {
-               entries {
-                 name
-                 type
-                 oid
-               }
-             }
-          }
-        }
-      }
-    `;
-  
-    const expression = `${env.GITHUB_BRANCH}:${path}`;
-  
-    const res = await fetch('https://api.github.com/graphql', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
-        'User-Agent': 'Cloudflare-Worker-Blog-Admin',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        variables: {
-          owner: env.GITHUB_OWNER,
-          repo: env.GITHUB_REPO,
-          path: expression
-        }
-      })
-    });
-  
-    const data = await res.json();
-    
-    if (!res.ok || data.errors) {
-        return listGitHubFilesRest(env, path);
-    }
-  
-    const entries = data.data.repository.object?.entries || [];
-    
-    // Filter only images (simple check)
-    const images = entries
-        .filter(e => e.type === 'blob' && /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(e.name))
-        .map(e => ({
-            name: e.name,
-            path: `${path}/${e.name}`,
-            sha: e.oid
-        }));
-    
-    return new Response(JSON.stringify(images), { headers: { 'Content-Type': 'application/json' } });
-}
+async functi于 listGitHubFiles(env, path) {
 
-async function listGitHubFiles(env, path) {
-
-  async function getEntries(targetPath) {
+  async functi于 getEntries(targetPath) {
 
     const query = `
       query($owner: String!, $repo: String!, $path: String!) {
@@ -372,7 +315,7 @@ async function listGitHubFiles(env, path) {
             ... on Tree {
               entries {
                 name
-                type
+                输入
                 oid
                 object {
                   ... on Blob {
