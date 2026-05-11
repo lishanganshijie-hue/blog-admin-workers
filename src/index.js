@@ -74,15 +74,22 @@ export default {
 
           if (indexRes.ok) {
             const indexData = await indexRes.json();
-            const formatted = indexData.map(post => ({
-              name: post.path.split('/').pop(),
-              path: `src/content/posts/${post.path}`,
-              title: post.title,
-              category: post.category,
-              date: post.date || null,
-              sha: "", 
-              type: 'file'
-            }));
+            // --- 替换为这个 ---
+            const formatted = indexData.map(post => {
+              const fileName = post.path.split('/').pop();
+              return {
+                name: fileName,
+                // 🟢 重点：直接使用文件名作为 path，或者保持和 JSON 一致
+                // 很多后台前端逻辑是通过文件名来匹配的
+                path: fileName, 
+                title: post.title,
+                category: post.category,
+                date: post.date || null,
+                sha: "static-index-placeholder", // 🟢 给一个占位符，防止前端因缺少 sha 而报错
+                type: 'file',
+                fullPath: `src/content/posts/${post.path}` // 留一个完整路径备用
+              };
+            });
             // 按日期排序
             formatted.sort((a, b) => (b.date && a.date) ? new Date(b.date) - new Date(a.date) : 0);
             return new Response(JSON.stringify(formatted), { 
