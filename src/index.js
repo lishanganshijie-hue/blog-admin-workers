@@ -97,11 +97,25 @@ export default {
 
             const formatted = indexData.map((post) => ({
               name: post.path.split('/').pop(),
-              path: post.path, // 保留完整路径
+
+              path: post.path,
+
+              displayPath: post.path,
+
               title: post.title || '',
+
               category: post.category || '',
+
+              tags: Array.isArray(post.tags)
+                ? post.tags
+                : [],
+
+              isDraft: Boolean(post.draft),
+
               date: post.date || '',
+
               sha: 'static-placeholder',
+
               type: 'file',
             }));
 
@@ -397,72 +411,52 @@ async function listGitHubFilesRecursive(
         entry.type === 'blob' &&
         entry.name.endsWith('.md')
       ) {
-        let title = entry.name;
-        let date = '';
+        let title = entry.name, date = '', category = '', tags = [], isDraft = false;
 
-        // Frontmatter解析
-        const fm =
-          entry.object?.text?.match(
-            /^---\n([\s\S]*?)\n---/
-          );
+        // 增强版元数据解析
+        const text = entry.object?.text || "";
+        const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+        if (fmMatch) {
+          const fm = fmMatch[1];
+          const titleM = fm.match(/^title:\s*(["']?)(.*)\1$/m);
+          const dateM = fm.match(/^published:\s*(.*)$/m);
+          const catM = fm.match(/^category:\s*(["']?)(.*)\1$/m);
+          const draftM = fm.match(/^draft:\s*(true|false)$/m);
+          const tagsM = fm.match(/^tags:\s*\[(.*?)\]/m);
 
-        if (fm) {
-          const titleMatch =
-            fm[1].match(
-              /^title:\s*(["']?)(.*)\1$/m
-            );
-
-          const dateMatch =
-            fm[1].match(
-              /^published:\s*(.*)$/m
-            );
-
-          if (titleMatch) {
-            title =
-              titleMatch[2].trim();
-          }
-
-          if (dateMatch) {
-            date =
-              dateMatch[1].trim();
+          if (titleM) title = titleM[2].trim();
+          if (dateM) date = dateM[1].trim();
+          if (catM) category = catM[2].trim();
+          if (draftM) isDraft = (draftM[1] === 'true');
+          if (tagsM) {
+            tags = tagsM[1].split(/[,，]/).map(t => t.replace(/["']/g, '').trim()).filter(t => t);
           }
         }
 
         results.push({
           name: entry.name,
-          path: fullPath.replace(
-            `${env.POSTS_PATH}/`,
-            ''
-          ),
-          fullPath,
+          path: fullPath, // 使用从根开始的完整路径，如 src/content/posts/xxx.md
+          displayPath: fullPath.replace(`${env.POSTS_PATH}/`, ''), // 用于界面显示的简短路径
           title,
           date,
+          category,
+          tags,
+          isDraft,
           sha: entry.oid,
           type: 'file',
         });
       }
     }
-
     return results;
   }
-
+  
   const files = await scan(postsPath);
+  // 按日期降序排列
+  files.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-  files.sort(
-    (a, b) =>
-      new Date(b.date || 0) -
-      new Date(a.date || 0)
-  );
-
-  return new Response(
-    JSON.stringify(files),
-    {
-      headers: {
-        'Content-Type':
-          'application/json',
-      },
-    }
-  );
+  return new Response(JSON.stringify(files), {
+    headers: { 'Content-Type': 'application/json', 'X-Source': 'GraphQL-FullScan' }
+  });
 }
 
 // =====================================================
@@ -645,22 +639,32 @@ async function resolveRealPostPath(
     if (res.ok) {
       const data = await res.json();
 
+      // 这里的 filename 可能是 "my-post.md"，也可能是 "src/content/posts/tech/my-post.md"
       const match = data.find((p) =>
-        p.path.endsWith(filename)
+        p.path === filename || p.path.endsWith(filename)
       );
 
       if (match) {
-        return `src/content/posts/${match.path}`;
+        // 【核心修改点 1】：检查 match.path 是否已经包含了完整前缀
+        if (match.path.startsWith('src/') || match.path.startsWith(env.POSTS_PATH)) {
+          return match.path;
+        }
+        // 如果没有前缀，再进行拼接
+        return `${env.POSTS_PATH}/${match.path.replace(/^\//, '')}`;
       }
     }
   } catch (e) {
-    console.error(
-      'Resolve path failed',
-      e
-    );
+    console.error('Resolve path failed', e);
   }
 
-  return `${env.POSTS_PATH}/${filename}`;
+  // 【核心修改点 2】：Fallback 兜底逻辑
+  // 如果输入的 filename 本身就已经是全路径了，直接返回它
+  if (filename.startsWith('src/') || filename.startsWith(env.POSTS_PATH)) {
+    return filename;
+  }
+
+  // 否则才按默认路径拼接
+  return `${env.POSTS_PATH}/${filename.replace(/^\//, '')}`;
 }
 
 // =====================================================

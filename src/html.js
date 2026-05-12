@@ -5,7 +5,7 @@ export const ADMIN_HTML = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>UpXuu Blog Admin</title>
+    <title>JianNAV Blog Admin</title>
     <link rel="stylesheet" href="https://unpkg.com/vditor/dist/index.css" />
     <script src="https://unpkg.com/vditor/dist/index.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -158,7 +158,7 @@ export const ADMIN_HTML = `
         <button onclick="toggleSidebar()" class="text-gray-600 focus:outline-none p-2 rounded hover:bg-gray-100">
             <i class="fas fa-bars text-xl"></i>
         </button>
-        <span class="font-bold text-lg text-gray-800">UpXuu Admin</span>
+        <span class="font-bold text-lg text-gray-800">JianNAV Admin</span>
         <button onclick="toggleTimeline()" id="mobile-timeline-btn" class="text-gray-600 focus:outline-none p-2 rounded hover:bg-gray-100 hidden">
             <i class="fas fa-clock text-xl"></i>
         </button>
@@ -179,7 +179,7 @@ export const ADMIN_HTML = `
             <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
                 <i class="fas fa-feather-alt text-white text-sm"></i>
             </div>
-            <h1 class="text-xl font-bold tracking-wide">UpXuu</h1>
+            <h1 class="text-xl font-bold tracking-wide">JianNAV</h1>
         </div>
         
         <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
@@ -220,28 +220,52 @@ export const ADMIN_HTML = `
         </div>
 
         <!-- Post List View -->
-        <div id="view-list" class="hidden flex-1 flex overflow-hidden">
-            <!-- List Container -->
-            <div class="flex-1 flex flex-col overflow-hidden bg-gray-50">
-                <div class="p-4 md:p-6 border-b bg-white shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center z-10">
-                    <div class="flex items-center gap-2 w-full md:w-auto">
-                        <h2 class="text-xl font-bold text-gray-800">文章列表</h2>
-                        <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full" id="post-count">0</span>
-                        <span id="current-filter" class="hidden ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded border flex items-center gap-1">
-                            <span id="filter-text"></span>
-                            <button onclick="clearFilter()" class="hover:text-red-500"><i class="fas fa-times"></i></button>
-                        </span>
-                    </div>
-                    <div class="relative w-full md:w-64">
-                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                        <input type="text" id="search-input" oninput="handleSearch()" placeholder="搜索标题..." class="w-full border-gray-200 border bg-gray-50 pl-10 pr-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
-                    </div>
+        <div id="view-list" class="view-section space-y-4">
+
+            <!-- 顶部工具栏 -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+
+                <!-- 左侧 Tab -->
+                <div class="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+
+                    <button
+                        id="tab-published"
+                        onclick="switchListTab('published')"
+                        class="px-4 py-1.5 rounded-md text-sm font-medium transition-all bg-white shadow-sm text-blue-600"
+                    >
+                        已发布
+                    </button>
+
+                    <button
+                        id="tab-drafts"
+                        onclick="switchListTab('drafts')"
+                        class="px-4 py-1.5 rounded-md text-sm font-medium transition-all text-gray-500 hover:text-gray-700"
+                    >
+                        草稿箱
+                    </button>
+
                 </div>
-                
-                <div id="list-container" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-3 pb-20 md:pb-6">
-                    <!-- Items injected here -->
+
+                <!-- 右侧搜索 -->
+                <div class="relative flex-1 md:max-w-xs">
+
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+
+                    <input
+                        type="text"
+                        id="search-input"
+                        placeholder="搜索标题 / 分类 / 标签"
+                        class="w-full pl-9 pr-4 py-2 bg-gray-50 border-none rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 outline-none"
+                    >
+
                 </div>
+
             </div>
+
+            <!-- 文章列表 -->
+            <div id="posts-list" class="grid gap-3"></div>
+
+        </div>
 
             <!-- Timeline Sidebar (Right) -->
             <div id="timeline-sidebar" class="fixed inset-y-0 right-0 w-64 bg-white shadow-2xl transform translate-x-full md:translate-x-0 md:static md:w-72 md:shadow-none border-l z-30 sidebar-transition flex flex-col">
@@ -554,6 +578,9 @@ export const ADMIN_HTML = `
     let currentFilterYm = null;
     let autoSaveTimer = null;
     let isFullscreen = false;
+    let currentTab = 'published'; // published | drafts
+    let searchTerm = '';
+    let dateFilter = '';
 
     // --- UI Helpers ---
     function toggleSidebar() {
@@ -1014,49 +1041,194 @@ export const ADMIN_HTML = `
         renderTimeline();
     }
 
-    function renderList() {
-        const container = document.getElementById('list-container');
-        document.getElementById('post-count').textContent = filteredPosts.length;
-        container.innerHTML = '';
-        
-        filteredPosts.forEach(item => {
-            const displayDate = item.date || item.dateStr || '未识别日期';
-            const displayTitle = item.title || item.name;
-            const isSticky = false; // We could parse this if returned from backend list API
-            
-            const div = document.createElement('div');
-            div.className = 'bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 flex justify-between items-center group cursor-pointer hover:border-blue-200 fade-in';
-            div.onclick = (e) => {
-                if(e.target.closest('button')) return;
-                navigate('/edit/' + encodeURIComponent(item.name));
-            };
-            
-            div.innerHTML = \`
-                <div class="flex items-center gap-4">
-                    <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 font-bold text-sm shrink-0">
-                        <i class="far fa-file-alt"></i>
-                    </div>
-                    <div>
-                        <h3 class="font-bold text-gray-800 text-base md:text-lg leading-tight mb-1 group-hover:text-blue-600 transition-colors line-clamp-1">\${displayTitle}</h3>
-                        <div class="flex items-center gap-3 text-xs text-gray-400">
-                            <span class="flex items-center gap-1"><i class="far fa-calendar"></i> \${displayDate}</span>
-                            <span class="hidden md:flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded text-gray-500">\${item.name}</span>
-                            \${isSticky ? '<span class="text-yellow-500 flex items-center gap-1"><i class="fas fa-thumbtack"></i> 置顶</span>' : ''}
-                        </div>
-                    </div>
+    function renderList(posts) {
+
+    const container = document.getElementById('list-container');
+
+    const countEl = document.getElementById('post-count');
+
+    if (countEl) {
+        countEl.textContent = posts.length;
+    }
+
+    if (!posts || posts.length === 0) {
+
+        container.innerHTML = `
+            <div class="text-center py-10 text-gray-400">
+
+                <i class="fas fa-file-alt text-4xl mb-3 block opacity-30"></i>
+
+                <div class="text-sm">
+                    未找到符合条件的${currentTab === 'drafts' ? '草稿' : '文章'}
                 </div>
-                <div class="flex items-center gap-2 shrink-0">
-                    <button onclick="navigate('/edit/' + encodeURIComponent('\${item.name}')); event.stopPropagation()" class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="编辑">
+
+            </div>
+        `;
+
+        return;
+    }
+
+    container.innerHTML = posts.map(post => {
+
+        const safePath = encodeURIComponent(post.path || '');
+
+        const safeTags = Array.isArray(post.tags)
+            ? post.tags
+            : [];
+
+        return `
+
+        <div class="group bg-white p-4 rounded-xl border border-gray-100 hover:border-blue-200 shadow-sm hover:shadow-md transition-all duration-300">
+
+            <div class="flex items-start justify-between gap-4">
+
+                <div
+                    class="flex-1 min-w-0 cursor-pointer"
+                    onclick="navigate('/edit/${safePath}')"
+                >
+
+                    <div class="flex items-center gap-2 mb-1">
+
+                        ${post.isDraft ? `
+                            <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-md uppercase tracking-wide">
+                                Draft
+                            </span>
+                        ` : ''}
+
+                        <h3 class="text-gray-900 font-medium truncate group-hover:text-blue-600 transition-colors">
+                            ${escapeHtml(post.title || '无标题')}
+                        </h3>
+
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
+
+                        <span>
+                            <i class="far fa-calendar-alt mr-1"></i>
+                            ${escapeHtml(post.date || '无日期')}
+                        </span>
+
+                        ${post.category ? `
+                            <span>
+                                <i class="far fa-folder mr-1"></i>
+                                ${escapeHtml(post.category)}
+                            </span>
+                        ` : ''}
+
+                        <span class="truncate max-w-[220px]">
+                            <i class="fas fa-link mr-1"></i>
+                            ${escapeHtml(post.displayPath || post.path || '')}
+                        </span>
+
+                    </div>
+
+                    ${safeTags.length > 0 ? `
+
+                        <div class="mt-2 flex flex-wrap gap-1">
+
+                            ${safeTags.map(tag => `
+
+                                <span class="px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded-md text-[10px]">
+
+                                    #${escapeHtml(tag)}
+
+                                </span>
+
+                            `).join('')}
+
+                        </div>
+
+                    ` : ''}
+
+                </div>
+
+                <div class="flex items-center gap-1 shrink-0">
+
+                    <button
+                        onclick="event.stopPropagation(); navigate('/edit/${safePath}')"
+                        class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="编辑"
+                    >
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button onclick="deletePost('\${item.name}', '\${item.sha}'); event.stopPropagation()" class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="删除">
+
+                    <button
+                        onclick="event.stopPropagation(); deletePost('${safePath}', '${post.sha}')"
+                        class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="删除"
+                    >
                         <i class="fas fa-trash-alt"></i>
                     </button>
+
                 </div>
-            \`;
-            container.appendChild(div);
-        });
-    }
+
+            </div>
+
+        </div>
+
+        `;
+
+    }).join('');
+}
+    
+    function applyFilters() {
+
+    const filtered = allPosts.filter(post => {
+
+        const matchesTab =
+            currentTab === 'drafts'
+                ? post.isDraft
+                : !post.isDraft;
+
+        const s = searchTerm.toLowerCase();
+
+        const matchesSearch =
+            !s ||
+            (post.title || '').toLowerCase().includes(s) ||
+            (post.category || '').toLowerCase().includes(s) ||
+            (post.displayPath || '').toLowerCase().includes(s) ||
+            (post.tags || []).some(t =>
+                t.toLowerCase().includes(s)
+            );
+
+        return matchesTab && matchesSearch;
+    });
+
+    renderList(filtered);
+}
+
+    function switchListTab(tab) {
+
+    currentTab = tab;
+
+    document
+        .getElementById('tab-published')
+        .classList.toggle('bg-white', tab === 'published');
+
+    document
+        .getElementById('tab-published')
+        .classList.toggle('text-blue-600', tab === 'published');
+
+    document
+        .getElementById('tab-drafts')
+        .classList.toggle('bg-white', tab === 'drafts');
+
+    document
+        .getElementById('tab-drafts')
+        .classList.toggle('text-blue-600', tab === 'drafts');
+
+    applyFilters();
+}
+
+    function escapeHtml(str) {
+
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
     function renderTimeline() {
         const container = document.getElementById('timeline-container');
