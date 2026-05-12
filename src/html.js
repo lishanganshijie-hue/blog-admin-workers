@@ -1006,59 +1006,60 @@ export const ADMIN_HTML = `
 
     // 加载文章列表
     async function loadPosts() {
+    try {
         if (typeof showLoading === 'function') showLoading(true);
-        try {
-            const res = await fetchAPI('/posts');
-            if (typeof showLoading === 'function') showLoading(false);
-            if (!res || !res.ok) return;
-            
-            const data = await res.json();
-            
-            // 数据标准化映射
-            allPosts = (Array.isArray(data) ? data : []).map(item => {
-                const tags = Array.isArray(item.tags) ? item.tags : [];
-                return {
-                    ...item,
-                    title: item.title || item.name || '无标题',
-                    path: item.path || '',
-                    displayPath: item.displayPath || item.path || '',
-                    date: item.date || '无日期',
-                    tags: tags,
-                    isDraft: Boolean(item.isDraft || item.draft)
-                };
-            });
+        const res = await fetchAPI('/posts');
+        if (typeof showLoading === 'function') showLoading(false);
+        
+        if (!res || !res.ok) return;
+        const data = await res.json();
+        
+        // 数据处理
+        allPosts = (Array.isArray(data) ? data : []).map(item => ({
+            ...item,
+            isDraft: Boolean(item.isDraft || item.draft),
+            title: item.title || item.name || '无标题',
+            tags: Array.isArray(item.tags) ? item.tags : []
+        }));
 
-            // 按日期倒序排序
-            allPosts.sort((a, b) => {
-                const dateA = a.date || '0000-00-00';
-                const dateB = b.date || '0000-00-00';
-                return dateB.localeCompare(dateA);
-            });
+        // 排序
+        allPosts.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-            // 如果有 applyFilters 函数则执行，否则直接渲染
-            if (typeof applyFilters === 'function') {
-                applyFilters();
-            } else {
-                renderList(allPosts);
-            }
-            
-            if (typeof renderTimeline === 'function') renderTimeline();
-        } catch (err) {
-            console.error('加载文章失败:', err);
-            if (typeof showLoading === 'function') showLoading(false);
+        // 更新全局过滤变量
+        filteredPosts = [...allPosts];
+
+        // 【关键修复】：只有在列表视图激活时才调用渲染
+        if (typeof applyFilters === 'function') {
+            applyFilters(); 
+        } else {
+            renderList(filteredPosts);
         }
+
+        // 时间轴也加一个检查
+        if (typeof renderTimeline === 'function' && document.getElementById('timeline-container')) {
+            renderTimeline();
+        }
+    } catch (e) {
+        console.error('loadPosts 发生错误:', e);
+        if (typeof showLoading === 'function') showLoading(false);
     }
+}
 
     // 渲染文章列表界面
     function renderList(posts) {
         const container = document.getElementById('list-container');
         const countEl = document.getElementById('post-count');
 
+        // 【安全护栏】
+        if (!container) return;
+
+        const displayPosts = Array.isArray(posts) ? posts : (window.allPosts || []);
+
         if (countEl) {
-            countEl.textContent = posts ? posts.length : 0;
+            countEl.textContent = displayPosts.length;
         }
 
-        if (!posts || posts.length === 0) {
+        if (displayPosts.length === 0) {
             container.innerHTML = \`
                 <div class="text-center py-10 text-gray-400">
                     <i class="fas fa-file-alt text-4xl mb-3 block opacity-30"></i>
@@ -1070,75 +1071,32 @@ export const ADMIN_HTML = `
             return;
         }
 
-        container.innerHTML = posts.map(post => {
+        container.innerHTML = displayPosts.map(post => {
             const safePath = encodeURIComponent(post.path || '');
             const safeTags = Array.isArray(post.tags) ? post.tags : [];
 
             return \`
             <div class="group bg-white p-4 rounded-xl border border-gray-100 hover:border-blue-200 shadow-sm hover:shadow-md transition-all duration-300">
                 <div class="flex items-start justify-between gap-4">
-                    <div
-                        class="flex-1 min-w-0 cursor-pointer"
-                        onclick="navigate('/edit/\${safePath}')"
-                    >
+                    <div class="flex-1 min-w-0 cursor-pointer" onclick="navigate('/edit/\${safePath}')">
                         <div class="flex items-center gap-2 mb-1">
-                            \${post.isDraft ? \`
-                                <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-md uppercase tracking-wide">
-                                    Draft
-                                </span>
-                            \` : ''}
-                            <h3 class="text-gray-900 font-medium truncate group-hover:text-blue-600 transition-colors">
-                                \${escapeHtml(post.title)}
+                            \${post.isDraft ? \`<span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-md">Draft</span>\` : ''}
+                            <h3 class="text-gray-900 font-medium truncate group-hover:text-blue-600">
+                                \${escapeHtml(post.title || '无标题')}
                             </h3>
                         </div>
-
                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
-                            <span>
-                                <i class="far fa-calendar-alt mr-1"></i>
-                                \${escapeHtml(post.date)}
-                            </span>
-                            \${post.category ? \`
-                                <span>
-                                    <i class="far fa-folder mr-1"></i>
-                                    \${escapeHtml(post.category)}
-                                </span>
-                            \` : ''}
-                            <span class="truncate max-w-[220px]">
-                                <i class="fas fa-link mr-1"></i>
-                                \${escapeHtml(post.displayPath || post.path)}
-                            </span>
+                            <span><i class="far fa-calendar-alt mr-1"></i>\${post.date || '无日期'}</span>
+                            \${post.category ? \`<span><i class="far fa-folder mr-1"></i>\${post.category}</span>\` : ''}
+                            <span class="truncate max-w-[200px]"><i class="fas fa-link mr-1"></i>\${post.displayPath || post.path}</span>
                         </div>
-
-                        \${safeTags.length > 0 ? \`
-                            <div class="mt-2 flex flex-wrap gap-1">
-                                \${safeTags.map(tag => \`
-                                    <span class="px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded-md text-[10px]">
-                                        #\${escapeHtml(tag)}
-                                    </span>
-                                \`).join('')}
-                            </div>
-                        \` : ''}
                     </div>
-
-                    <div class="flex items-center gap-1 shrink-0">
-                        <button
-                            onclick="event.stopPropagation(); navigate('/edit/\${safePath}')"
-                            class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="编辑"
-                        >
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button
-                            onclick="event.stopPropagation(); deletePost('\${safePath}', '\${post.sha}')"
-                            class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="删除"
-                        >
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
+                    <div class="flex items-center gap-1">
+                        <button onclick="event.stopPropagation(); navigate('/edit/\${safePath}')" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><i class="fas fa-edit"></i></button>
+                        <button onclick="event.stopPropagation(); deletePost('\${safePath}', '\${post.sha}')" class="p-2 text-red-600 hover:bg-red-50 rounded-lg"><i class="fas fa-trash-alt"></i></button>
                     </div>
                 </div>
-            </div>
-            \`;
+            </div>\`;
         }).join('');
     }
 
@@ -1211,6 +1169,7 @@ export const ADMIN_HTML = `
 
     function renderTimeline() {
         const container = document.getElementById('timeline-container');
+        if (!container) return; // 如果找不到时间轴容器，直接退出
         container.innerHTML = '';
         
         const groups = {};
