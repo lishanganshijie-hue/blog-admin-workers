@@ -791,41 +791,64 @@ export const ADMIN_HTML = `
         // 如果视图没有变化，不重新加载
         if (currentView === path) return;
         currentView = path;
-        
+
+        // --- 【核心修复 1】：切换路由时，首先清空所有可能存在的侧边栏内容 ---
+        const timelineContainers = ['timeline-container', 'gallery-timeline'];
+        timelineContainers.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = ''; 
+        });
+
         // Update Sidebar Active State
         document.querySelectorAll('aside nav a').forEach(el => {
             el.classList.remove('bg-slate-800', 'text-white');
-            el.querySelector('i').classList.remove('text-blue-400');
+            const icon = el.querySelector('i');
+            if (icon) icon.classList.remove('text-blue-400');
         });
         
+        // 路由匹配逻辑
         if (path === '/' || path === '/new' || path === '/create') {
             const el = document.getElementById('nav-new');
-            el.classList.add('bg-slate-800', 'text-white');
-            el.querySelector('i').classList.add('text-blue-400');
+            if (el) {
+                el.classList.add('bg-slate-800', 'text-white');
+                const icon = el.querySelector('i');
+                if (icon) icon.classList.add('text-blue-400');
+            }
             showEditorView();
-            // 只有当文件名输入框为空时才调用 newPost()，避免清空正在编辑的内容
             if (!document.getElementById('post-filename').value) {
                 newPost();
             }
         } else if (path === '/list') {
             const el = document.getElementById('nav-list');
-            el.classList.add('bg-slate-800', 'text-white');
-            el.querySelector('i').classList.add('text-blue-400');
-            showListView();
+            if (el) {
+                el.classList.add('bg-slate-800', 'text-white');
+                const icon = el.querySelector('i');
+                if (icon) icon.classList.add('text-blue-400');
+            }
+            showListView(); // showListView 内部会触发 loadPosts -> renderTimeline
         } else if (path === '/gallery') {
             const el = document.getElementById('nav-gallery');
-            el.classList.add('bg-slate-800', 'text-white');
-            el.querySelector('i').classList.add('text-blue-400');
-            showGalleryView();
+            if (el) {
+                el.classList.add('bg-slate-800', 'text-white');
+                const icon = el.querySelector('i');
+                if (icon) icon.classList.add('text-blue-400');
+            }
+            showGalleryView(); // 内部会触发 loadGallery -> renderGalleryTimeline
         } else if (path === '/settings') {
             const el = document.getElementById('nav-settings');
-            el.classList.add('bg-slate-800', 'text-white');
-            el.querySelector('i').classList.add('text-blue-400');
+            if (el) {
+                el.classList.add('bg-slate-800', 'text-white');
+                const icon = el.querySelector('i');
+                if (icon) icon.classList.add('text-blue-400');
+            }
             showSettingsView();
         } else if (path.startsWith('/edit/')) {
             const el = document.getElementById('nav-list');
-            el.classList.add('bg-slate-800', 'text-white');
-            el.querySelector('i').classList.add('text-blue-400');
+            if (el) {
+                el.classList.add('bg-slate-800', 'text-white');
+                const icon = el.querySelector('i');
+                if (icon) icon.classList.add('text-blue-400');
+            }
             showEditorView();
             const filename = decodeURIComponent(path.replace('/edit/', ''));
             if (filename) editPost(filename);
@@ -1202,38 +1225,20 @@ export const ADMIN_HTML = `
         });
     }
 
-    function filterByDate(ym) {
-        currentFilterYm = ym;
-        const filterEl = document.getElementById('current-filter');
-        const filterText = document.getElementById('filter-text');
-        
-        if (ym) {
-            filteredPosts = allPosts.filter(p => {
-                const d = p.date || p.dateStr || '其他';
-                return d.startsWith(ym);
-            });
-            filterEl.classList.remove('hidden');
-            filterText.textContent = ym;
-        } else {
-            filteredPosts = [...allPosts];
-            filterEl.classList.add('hidden');
+    function filterByDate(date) {
+        currentFilterYm = date;
+        // 【关键修复】：增加安全检查，防止在非列表页报错
+        const allItems = document.querySelectorAll('.timeline-item');
+        if (allItems.length > 0) {
+            allItems.forEach(el => el.classList.remove('bg-blue-50', 'text-blue-600', 'font-bold'));
+        }
+
+        const activeEl = document.getElementById(\`timeline-\${date}\`);
+        if (activeEl) {
+            activeEl.classList.add('bg-blue-50', 'text-blue-600', 'font-bold');
         }
         
-        // Also re-apply search if any
-        handleSearch(); // logic merge inside
-        
-        // Update timeline UI active state
-        renderTimeline();
-        
-        // Close mobile timeline drawer
-        const sb = document.getElementById('timeline-sidebar');
-        if (!sb.classList.contains('translate-x-full')) {
-            toggleTimeline();
-        }
-    }
-    
-    function clearFilter() {
-        filterByDate(null);
+        applyFilters();
     }
 
     function handleSearch() {
@@ -1918,38 +1923,33 @@ export const ADMIN_HTML = `
         });
     }
 
-    function renderGalleryTimeline() {
-        const container = document.getElementById('gallery-timeline-container');
+    function renderGalleryTimeline(images) {
+        const container = document.getElementById('gallery-timeline');
+        if (!container) return; // 【安全检查】
+
         container.innerHTML = '';
+        const groups = {};
         
-        const yms = [...new Set(galleryImages.map(i => i.ym))].sort().reverse();
-        
-        yms.forEach(ym => {
-            const div = document.createElement('div');
-            div.className = "flex items-center justify-between px-4 py-2 cursor-pointer transition-colors text-gray-600 hover:bg-gray-50 hover:text-blue-500";
-            div.onclick = () => {
-                const el = document.getElementById(\`gallery-group-\${ym}\`);
-                if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                     const sb = document.getElementById('gallery-sidebar');
-                     if (!sb.classList.contains('translate-x-full')) toggleGalleryTimeline();
-                }
-            };
-            div.innerHTML = \`
-                <img src="\${thumbUrl}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" onerror="this.src='https://via.placeholder.com/150?text=Error'">
-                <div class="absolute top-2 right-2 z-10">
-                    <input type="checkbox" class="w-5 h-5 accent-blue-600 shadow-sm cursor-pointer transform scale-125" 
-                        onchange="toggleImageSelection('\${img.name}', '\${imageUrl}', this)"
-                        \${isSelected ? 'checked' : ''}>
-                </div>
-                <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
-                    <span class="bg-white/90 text-blue-600 px-3 py-1 rounded-full text-xs font-bold shadow-sm backdrop-blur-sm">选择</span>
-                </div>
-                <div class="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] p-1 truncate text-center backdrop-blur-[2px]">
-                    \${img.name}
-                </div>
+        images.forEach(img => {
+            const date = img.date || 'Unknown';
+            if (!groups[date]) groups[date] = [];
+            groups[date].push(img);
+        });
+
+        Object.keys(groups).sort().reverse().forEach(date => {
+            // 【修复点】：在这里定义 thumbUrl
+            const firstImg = groups[date][0];
+            const thumbUrl = firstImg ? (firstImg.thumbnail || firstImg.path) : ''; 
+
+            const item = document.createElement('div');
+            item.className = 'cursor-pointer p-2 hover:bg-blue-50 rounded-lg transition-all';
+            // 注意转义 \${}
+            item.innerHTML = \`
+                <div class="text-xs font-bold text-gray-500">\${date}</div>
+                <div class="text-[10px] text-gray-400">\${groups[date].length} 张图片</div>
             \`;
-            container.appendChild(div);
+            item.onclick = () => filterGalleryByDate(date);
+            container.appendChild(item);
         });
     }
 
