@@ -1573,49 +1573,46 @@ export const ADMIN_HTML = `
         const vFriends = document.getElementById('view-friends');
         vFriends.classList.remove('hidden');
 
-        // 3. 填充 HTML 结构 (只在第一次加载或需要刷新时填充)
-        // 修正建议：确保 HTML 内部没有未转义的反引号，并检查插值表达式
-        vFriends.innerHTML = `
-            <div class="flex flex-col h-full overflow-hidden">
-                <div class="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm z-10">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-user-friends"></i>
-                        </div>
-                        <div>
-                            <h2 class="text-lg font-bold text-slate-800">友链管理</h2>
-                            <p class="text-xs text-slate-500">数据源: src/data/friends.json</p>
-                        </div>
-                    </div>
-                    <button onclick="addFriend()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-md transition-all flex items-center gap-2 text-sm font-medium">
-                        <i class="fas fa-plus"></i> 新增站友
-                    </button>
-                </div>
+        // 3. 填充 HTML 结构
+        // 使用变量隔离法，确保编译器不会将其误认为 JSX 语法
+        const htmlTemplate = [
+            '<div class="flex flex-col h-full overflow-hidden">',
+            '    <div class="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm z-10">',
+            '        <div class="flex items-center gap-3">',
+            '            <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">',
+            '                <i class="fas fa-user-friends"></i>',
+            '            </div>',
+            '            <div>',
+            '                <h2 class="text-lg font-bold text-slate-800">友链管理</h2>',
+            '                <p class="text-xs text-slate-500">数据源: src/data/friends.json</p>',
+            '            </div>',
+            '        </div>',
+            '        <button onclick="addFriend()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-md transition-all flex items-center gap-2 text-sm font-medium">',
+            '            <i class="fas fa-plus"></i> 新增站友',
+            '        </button>',
+            '    </div>',
+            '    <div class="flex-1 overflow-auto p-4 md:p-6">',
+            '        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">',
+            '            <table class="w-full text-left border-collapse">',
+            '                <thead>',
+            '                    <tr class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-bold">',
+            '                        <th class="px-6 py-4 text-center w-16">头像</th>',
+            '                        <th class="px-6 py-4">站名/链接</th>',
+            '                        <th class="px-6 py-4">分类</th>',
+            '                        <th class="px-6 py-4">标记/状态</th>',
+            '                        <th class="px-6 py-4 text-right">操作</th>',
+            '                    </tr>',
+            '                </thead>',
+            '                <tbody id="friends-list-body" class="divide-y divide-slate-100 text-sm text-slate-700">',
+            '                    <tr><td colspan="5" class="py-10 text-center text-slate-400"><i class="fas fa-spinner fa-spin mr-2"></i> 加载中...</td></tr>',
+            '                </tbody>',
+            '            </table>',
+            '        </div>',
+            '    </div>',
+            '</div>'
+        ].join('');
 
-                <div class="flex-1 overflow-auto p-4 md:p-6">
-                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-bold">
-                                    <th class="px-6 py-4 text-center w-16">头像</th>
-                                    <th class="px-6 py-4">站名/链接</th>
-                                    <th class="px-6 py-4">分类</th>
-                                    <th class="px-6 py-4">标记/状态</th>
-                                    <th class="px-6 py-4 text-right">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="friends-list-body" class="divide-y divide-slate-100 text-sm text-slate-700">
-                                <tr>
-                                    <td colspan="5" class="py-10 text-center text-slate-400">
-                                        <i class="fas fa-spinner fa-spin mr-2"></i> 加载中...
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        `.trim(); // 使用 .trim() 清除首尾空行，减少渲染抖动
+        vFriends.innerHTML = htmlTemplate;
 
         // 4. 调用加载数据逻辑
         await loadFriendsData();
