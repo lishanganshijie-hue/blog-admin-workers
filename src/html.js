@@ -1100,17 +1100,14 @@ export const ADMIN_HTML = `
     // --- 修改：具有自动重命名逻辑的保存函数 ---
     async function savePost() {
         let filename = document.getElementById('post-filename').value.trim();
-        if (!filename) return alert('请输入文件名');
+        if (!filename) { alert('请输入文件名'); return; }
 
-        // 【核心逻辑】：根据草稿勾选框，自动处理文件名
         const isDraftChecked = document.getElementById('fm-draft').checked;
         
-        // 1. 如果勾选了草稿，且文件名没前缀，就加上 'draft-'
+        // 自动处理草稿前缀
         if (isDraftChecked && !filename.startsWith('draft-')) {
             filename = 'draft-' + filename;
-        } 
-        // 2. 如果没勾选草稿，但文件名有 'draft-' 前缀，就去掉它（即“转正”）
-        else if (!isDraftChecked && filename.startsWith('draft-')) {
+        } else if (!isDraftChecked && filename.startsWith('draft-')) {
             filename = filename.replace(/^draft-/, '');
         }
 
@@ -1120,35 +1117,42 @@ export const ADMIN_HTML = `
         const content = buildFrontmatter() + vditor.getValue();
         showLoading(true);
         
-        // 发送保存请求
-        const res = await fetchAPI('/post/' + encodeURIComponent(finalFilename), {
-            method: 'PUT',
-            body: JSON.stringify({ content: content, sha: currentSha })
-        });
-        
-        showLoading(false);
-        if (res && res.ok) {
-            const data = await res.json();
-            let msg = isDraftChecked ? '草稿已保存！' : '文章已发布！';
+        try {
+            const res = await fetchAPI('/post/' + encodeURIComponent(finalFilename), {
+                method: 'PUT',
+                body: JSON.stringify({ content: content, sha: currentSha })
+            });
             
-            if (data.indexNow && data.indexNow.status === 'pending') {
-                msg += '\nIndexNow 提交已触发 (后台处理中)';
+            showLoading(false);
+            if (res && res.ok) {
+                const data = await res.json();
+                let msg = isDraftChecked ? '草稿已保存！' : '文章已发布！';
+                
+                // 注意这里：使用了 \\n 避免模板字符串语法错误
+                if (data.indexNow && data.indexNow.status === 'pending') {
+                    msg += '\\nIndexNow 提交已触发 (后台处理中)';
+                }
+                alert(msg);
+                
+                // 自动跳转/更新地址栏逻辑
+                const currentPath = window.location.pathname;
+                if (currentPath.startsWith('/edit/')) {
+                    const oldFilename = decodeURIComponent(currentPath.replace('/edit/', ''));
+                    if (oldFilename !== finalFilename) {
+                        const newEditPath = '/edit/' + encodeURIComponent(finalFilename);
+                        window.history.replaceState(null, '', newEditPath);
+                    }
+                }
+                
+                if (data.content && data.content.sha) currentSha = data.content.sha;
+                if (typeof clearDraft === 'function') clearDraft(finalFilename);
+            } else {
+                const errText = await res.text();
+                alert('保存失败: ' + errText);
             }
-            alert(msg);
-            
-            // 【自动跳转】：如果文件名变了（比如从草稿变成了正式文章），URL也得变
-            const currentPath = window.location.pathname;
-            const newEditPath = '/edit/' + encodeURIComponent(finalFilename);
-            if (currentPath.startsWith('/edit/') && decodeURIComponent(currentPath.replace('/edit/', '')) !== finalFilename) {
-                 // 自动跳转到新的编辑地址，防止下次保存报错（SHA冲突）
-                 window.history.replaceState(null, '', newEditPath);
-            }
-            
-            if (data.content && data.content.sha) currentSha = data.content.sha;
-            clearDraft(finalFilename);
-        } else {
-            const err = await res.text();
-            alert('保存失败: ' + err);
+        } catch (e) {
+            showLoading(false);
+            alert('请求异常: ' + e.message);
         }
     }
 
