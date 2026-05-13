@@ -677,7 +677,8 @@ export const ADMIN_HTML = `
         const btn = document.getElementById('btn-fullscreen');
         const metaSidebar = document.getElementById('meta-sidebar');
         const sidebar = document.getElementById('main-sidebar');
-        const mobileHeader = document.querySelector('.md\\:hidden.fixed.top-0');
+        // 修复了正则和反斜杠转义，否则 querySelector 报错
+        const mobileHeader = document.querySelector('.md\\\\:hidden.fixed.top-0');
 
         if (!isFullscreen) {
             editor.classList.add('fixed', 'inset-0', 'z-[200]', 'bg-white');
@@ -759,7 +760,7 @@ export const ADMIN_HTML = `
         allPosts = data.filter(item => item.name.endsWith('.md'));
         
         allPosts.forEach(post => {
-            const match = post.name.match(/^(\d{4}-\d{2}-\d{2})/);
+            const match = post.name.match(/^(\\d{4}-\\d{2}-\\d{2})/);
             if (match) {
                 post.dateStr = match[1];
             } else {
@@ -1056,7 +1057,7 @@ export const ADMIN_HTML = `
             const data = await res.json();
             let msg = '保存成功！';
             if (data.indexNow && data.indexNow.status === 'pending') {
-                msg += '\nIndexNow 提交已触发 (后台处理中)';
+                msg += '\\nIndexNow 提交已触发 (后台处理中)';
             }
             alert(msg);
             if (data.content && data.content.sha) currentSha = data.content.sha;
@@ -1204,7 +1205,7 @@ export const ADMIN_HTML = `
         let markdown = '';
         selectedImages.forEach(json => {
             const item = JSON.parse(json);
-            markdown += \`![\${item.name}](\${item.url})\n\`;
+            markdown += \`![\${item.name}](\${item.url})\\n\`;
         });
         vditor.insertValue(markdown);
         selectedImages.clear();
@@ -1295,7 +1296,7 @@ export const ADMIN_HTML = `
                      statusText.textContent = \`正在压缩 (\${i + 1}/\${fileArray.length}): \${file.name}\`;
                      const webpBlob = await compressImageToWebP(file, quality);
                      fileToUpload = webpBlob;
-                     filename = filename.replace(/\.\w+$/, '.webp');
+                     filename = filename.replace(/\\.\\w+$/, '.webp');
                 }
                 await uploadSingleFile(fileToUpload, filename);
                 successCount++;
@@ -1336,7 +1337,7 @@ export const ADMIN_HTML = `
         countEl.textContent = images.length;
         
         images.forEach(img => {
-            const match = img.name.match(/(20\d{2})(\d{2})(\d{2})/);
+            const match = img.name.match(/(20\\d{2})(\\d{2})(\\d{2})/);
             if (match) { img.dateObj = new Date(\`\${match[1]}-\${match[2]}-\${match[3]}\`); img.ym = \`\${match[1]}-\${match[2]}\`; } 
             else { img.dateObj = new Date(0); img.ym = 'Unknown'; }
         });
@@ -1451,13 +1452,13 @@ export const ADMIN_HTML = `
         
         const getVal = (regex) => { const m = configContent.match(regex); return m ? m[1] : ''; };
         
-        document.getElementById('set-title').value = getVal(/title:\s*['"](.*?)['"]/);
-        document.getElementById('set-subtitle').value = getVal(/subtitle:\s*['"](.*?)['"]/);
-        document.getElementById('set-name').value = getVal(/name:\s*['"](.*?)['"]/);
-        document.getElementById('set-bio').value = getVal(/bio:\s*['"](.*?)['"]/);
-        document.getElementById('set-avatar').value = getVal(/avatar:\s*['"](.*?)['"]/);
+        document.getElementById('set-title').value = getVal(/title:\\s*['"](.*?)['"]/);
+        document.getElementById('set-subtitle').value = getVal(/subtitle:\\s*['"](.*?)['"]/);
+        document.getElementById('set-name').value = getVal(/name:\\s*['"](.*?)['"]/);
+        document.getElementById('set-bio').value = getVal(/bio:\\s*['"](.*?)['"]/);
+        document.getElementById('set-avatar').value = getVal(/avatar:\\s*['"](.*?)['"]/);
         
-        const bgMatch = layoutContent.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/);
+        const bgMatch = layoutContent.match(/background-image:\\s*url\\(['"]?(.*?)['"]?\\)/);
         if (bgMatch) document.getElementById('set-bg').value = bgMatch[1];
     }
 
@@ -1467,15 +1468,15 @@ export const ADMIN_HTML = `
         const replaceVal = (regex, val) => {
             if (newConfig.match(regex)) { newConfig = newConfig.replace(regex, (match, p1, p2, p3) => p1 + val + p3); }
         };
-        replaceVal(/(title:\s*['"])(.*?)(['"])/, document.getElementById('set-title').value);
-        replaceVal(/(subtitle:\s*['"])(.*?)(['"])/, document.getElementById('set-subtitle').value);
-        replaceVal(/(name:\s*['"])(.*?)(['"])/, document.getElementById('set-name').value);
-        replaceVal(/(bio:\s*['"])(.*?)(['"])/, document.getElementById('set-bio').value);
-        replaceVal(/(avatar:\s*['"])(.*?)(['"])/, document.getElementById('set-avatar').value);
+        replaceVal(/(title:\\s*['"])(.*?)(['"])/, document.getElementById('set-title').value);
+        replaceVal(/(subtitle:\\s*['"])(.*?)(['"])/, document.getElementById('set-subtitle').value);
+        replaceVal(/(name:\\s*['"])(.*?)(['"])/, document.getElementById('set-name').value);
+        replaceVal(/(bio:\\s*['"])(.*?)(['"])/, document.getElementById('set-bio').value);
+        replaceVal(/(avatar:\\s*['"])(.*?)(['"])/, document.getElementById('set-avatar').value);
         
         let newLayout = layoutContent;
         const bgUrl = document.getElementById('set-bg').value;
-        newLayout = newLayout.replace(/(background-image:\s*url\(['"]?)(.*?)(['"]?\))/, \`$1\${bgUrl}$3\`);
+        newLayout = newLayout.replace(/(background-image:\\s*url\\(['"]?)(.*?)(['"]?\\))/, \`$1\${bgUrl}$3\`);
         
         const res1 = await fetchAPI('/settings', { method: 'PUT', body: JSON.stringify({ file: 'config', content: newConfig, sha: configSha }) });
         if (!res1.ok) { showLoading(false); alert('保存配置失败'); return; }
@@ -1487,7 +1488,7 @@ export const ADMIN_HTML = `
     }
 
     function parseFrontmatter(text) {
-        const fmRegex = /^---\n([\s\S]*?)\n---\n/;
+        const fmRegex = /^---\\n([\\s\\S]*?)\\n---\\n/;
         const match = text.match(fmRegex);
         let body = text;
         
@@ -1496,7 +1497,7 @@ export const ADMIN_HTML = `
             body = text.replace(fmRegex, '');
             
             const getField = (key) => {
-                const regex = new RegExp(\`^\\s*\${key}:\\s*(.*)$\`, 'm');
+                const regex = new RegExp(\`^\\\\s*\${key}:\\\\s*(.*)$\`, 'm');
                 const m = fmText.match(regex);
                 return m ? m[1].trim() : '';
             };
@@ -1545,11 +1546,11 @@ export const ADMIN_HTML = `
         const draft = document.getElementById('fm-draft').checked;
         const sticky = parseInt(document.getElementById('fm-sticky').value) || 0;
         
-        let fm = '---\n';
-        if (title) fm += \`title: "\${title}"\n\`;
-        if (date) fm += \`published: \${date}\n\`;
-        if (image) fm += \`image: "\${image}"\n\`;
-        if (description) fm += \`description: "\${description}"\n\`;
+        let fm = '---\\n';
+        if (title) fm += \`title: "\${title}"\\n\`;
+        if (date) fm += \`published: \${date}\\n\`;
+        if (image) fm += \`image: "\${image}"\\n\`;
+        if (description) fm += \`description: "\${description}"\\n\`;
 
         if (tags) {
             let cleanTags = tags.trim();
@@ -1557,14 +1558,16 @@ export const ADMIN_HTML = `
                 cleanTags = cleanTags.substring(1, cleanTags.length - 1);
             }
             const tagList = cleanTags.split(/[,，]/).map(t => t.trim().replace(/^['"]+|['"]+$/g, '')).filter(t => t);
-            if (tagList.length > 0) fm += \`tags: [\${tagList.map(t => '"' + t + '"').join(', ')}]\n\`;
+            if (tagList.length > 0) {
+                fm += \`tags: [\${tagList.map(t => '"' + t + '"').join(', ')}]\\n\`;
+            }
         }
         
-        if (category) fm += \`category: "\${category}"\n\`;
-        if (draft) fm += \`draft: true\n\`;
-        if (sticky > 0) fm += \`sticky: \${sticky}\n\`; 
+        if (category) fm += \`category: "\${category}"\\n\`;
+        if (draft) fm += \`draft: true\\n\`;
+        if (sticky > 0) fm += \`sticky: \${sticky}\\n\`; 
         
-        fm += '---\n\n';
+        fm += '---\\n\\n';
         return fm;
     }
 
