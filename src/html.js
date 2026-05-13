@@ -1661,7 +1661,7 @@ export const ADMIN_HTML = `
     function renderFriendsList() {
         const tbody = document.getElementById('friends-list-body');
         if (!allFriends || allFriends.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center">暂无友链数据</td></tr>`;
+            tbody.innerHTML = \`<tr><td colspan="4" class="px-6 py-10 text-center">暂无友链数据</td></tr>\`;
             return;
         }
 
@@ -1687,7 +1687,7 @@ export const ADMIN_HTML = `
             const badge = friend.badge ? badgeMap[friend.badge] : null;
             const isHidden = friend.hidden === true;
 
-            return `
+            return \`
                 <tr class="hover:bg-slate-50 transition-colors ${isHidden ? 'opacity-50' : ''}">
                     <td class="px-6 py-4">
                         <div class="flex items-center gap-3">
@@ -1713,7 +1713,7 @@ export const ADMIN_HTML = `
                         </button>
                     </td>
                 </tr>
-            `;
+            \`;
         }).join('');
     }
 
@@ -1724,7 +1724,7 @@ export const ADMIN_HTML = `
         const friend = isNew ? { name: '', url: '', desc: '', avatar: '', category: 'online', badge: '', note: '', hidden: false } : allFriends[index];
         
         // 创建弹窗 HTML
-        const modalHtml = `
+        const modalHtml = \`
             <div id="friend-modal" class="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center backdrop-blur-sm p-4">
                 <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
                     <div class="px-6 py-4 border-b flex justify-between items-center bg-slate-50">
@@ -1787,7 +1787,7 @@ export const ADMIN_HTML = `
                     </div>
                 </div>
             </div>
-        `;
+        \`;
         document.body.insertAdjacentHTML('beforeend', modalHtml);
     }
 
@@ -1854,7 +1854,7 @@ export const ADMIN_HTML = `
 
     // 6. 删除逻辑
     async function deleteFriend(index) {
-        if (!confirm(`确定要删除 ${allFriends[index].name} 吗？此操作不可撤销。`)) return;
+        if (!confirm(\`确定要删除 ${allFriends[index].name} 吗？此操作不可撤销。\`)) return;
         
         allFriends.splice(index, 1);
         // 调用保存，由于这里不需要表单数据，直接复用部分逻辑或简单写一个：
