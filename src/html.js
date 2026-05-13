@@ -1556,58 +1556,46 @@ export const ADMIN_HTML = `
     }
 
     /* =========================================================
-   3.6.5 友链管理 (Friends Management)
-   ========================================================= */
+       3.6.5 友链管理 (Friends Management) - 终极稳健版
+       ========================================================= */
 
-let allFriends = [];       // 全局存储友链数组
-let currentFriendsSha = ''; // 全局记录 SHA
+let allFriends = [];       
+let currentFriendsSha = ''; 
 
-// ---------------------------
-// 1. 渲染友链管理主界面
-// ---------------------------
+/**
+ * 1. 渲染主界面
+ */
 async function showFriendsView() {
-    // 隐藏其他视图
     const views = ['view-list', 'view-editor', 'view-gallery', 'view-settings'];
     views.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
 
-    // 显示友链视图
     const vFriends = document.getElementById('view-friends');
+    if (!vFriends) return;
     vFriends.classList.remove('hidden');
 
-    // 渲染 HTML 结构
-    const htmlTemplate = [
+    vFriends.innerHTML = [
         '<div class="flex flex-col h-full overflow-hidden">',
         '  <div class="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm z-10">',
         '    <div class="flex items-center gap-3">',
-        '      <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">',
-        '        <i class="fas fa-user-friends"></i>',
-        '      </div>',
-        '      <div>',
-        '        <h2 class="text-lg font-bold text-slate-800">友链管理</h2>',
-        '        <p class="text-xs text-slate-500">数据源: src/data/friends.json</p>',
-        '      </div>',
+        '      <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><i class="fas fa-user-friends"></i></div>',
+        '      <div><h2 class="text-lg font-bold text-slate-800">友链管理</h2><p class="text-xs text-slate-500">数据源: friends.json</p></div>',
         '    </div>',
-        '    <button onclick="addFriend()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-md transition-all flex items-center gap-2 text-sm font-medium">',
+        '    <button onclick="window.addFriend()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-md transition-all flex items-center gap-2 text-sm font-medium">',
         '      <i class="fas fa-plus"></i> 新增站友',
         '    </button>',
         '  </div>',
         '  <div class="flex-1 overflow-auto p-4 md:p-6">',
         '    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">',
         '      <table class="w-full text-left border-collapse">',
-        '        <thead>',
-        '          <tr class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-bold">',
-        '            <th class="px-6 py-4 text-center w-16">头像</th>',
-        '            <th class="px-6 py-4">站名/链接</th>',
-        '            <th class="px-6 py-4">分类</th>',
-        '            <th class="px-6 py-4">标记/状态</th>',
-        '            <th class="px-6 py-4 text-right">操作</th>',
-        '          </tr>',
-        '        </thead>',
+        '        <thead><tr class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-bold">',
+        '          <th class="px-6 py-4 text-center w-16">头像</th><th class="px-6 py-4">站名/链接</th>',
+        '          <th class="px-6 py-4">分类</th><th class="px-6 py-4">状态</th><th class="px-6 py-4 text-right">操作</th>',
+        '        </tr></thead>',
         '        <tbody id="friends-list-body" class="divide-y divide-slate-100 text-sm text-slate-700">',
-        '          <tr><td colspan="5" class="py-10 text-center text-slate-400"><i class="fas fa-spinner fa-spin mr-2"></i> 加载中...</td></tr>',
+        '          <tr><td colspan="5" class="py-10 text-center text-slate-400">加载中...</td></tr>',
         '        </tbody>',
         '      </table>',
         '    </div>',
@@ -1615,200 +1603,116 @@ async function showFriendsView() {
         '</div>'
     ].join('');
 
-    vFriends.innerHTML = htmlTemplate;
-
-    // 加载数据
     await loadFriendsData();
 }
 
-// ---------------------------
-// 2. 从 GitHub 获取 friends.json
-// ---------------------------
+/**
+ * 2. 数据加载与渲染
+ */
 async function loadFriendsData() {
-    showLoading(true);
+    if (window.showLoading) window.showLoading(true);
     try {
         const res = await fetchAPI('/content/src/data/friends.json');
-        showLoading(false);
-
         if (res && res.ok) {
             const data = await res.json();
             currentFriendsSha = data.sha;
-
-            const content = decodeURIComponent(escape(atob(data.content)));
-            allFriends = JSON.parse(content);
-
+            allFriends = JSON.parse(decodeURIComponent(escape(atob(data.content))));
             renderFriendsList();
-        } else {
-            const err = await res.text();
-            document.getElementById('friends-list-body').innerHTML =
-                '<tr><td colspan="5" class="py-10 text-center text-red-500">' +
-                '加载失败: ' + escapeHtml(err) +
-                '</td></tr>';
         }
-    } catch (e) {
-        showLoading(false);
-        console.error(e);
-        document.getElementById('friends-list-body').innerHTML =
-            '<tr><td colspan="5" class="py-10 text-center text-red-500">' +
-            '加载失败: ' + escapeHtml(e.message || e) +
-            '</td></tr>';
-    }
+    } catch (e) { console.error('Load Error:', e); }
+    finally { if (window.showLoading) window.showLoading(false); }
 }
 
-// ---------------------------
-// 3. 渲染列表行 (Worker-safe)
-// ---------------------------
 function renderFriendsList() {
     const tbody = document.getElementById('friends-list-body');
-    if (!allFriends || allFriends.length === 0) {
+    if (!tbody || !allFriends.length) {
         tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-10 text-center">暂无友链数据</td></tr>';
         return;
     }
 
-    const categoryMap = {
-        'real': { text: '知交', class: 'bg-green-100 text-green-700' },
-        'online': { text: '云间', class: 'bg-blue-100 text-blue-700' },
-        'stash': { text: '远望', class: 'bg-purple-100 text-purple-700' },
-        'org': { text: '同道', class: 'bg-orange-100 text-orange-700' }
-    };
-
-    const badgeMap = {
-        'star': { text: '推荐', class: 'bg-amber-100 text-amber-700', icon: 'fa-star' },
-        'error': { text: '失效', class: 'bg-red-100 text-red-700', icon: 'fa-exclamation-circle' },
-        'stale': { text: '停更', class: 'bg-gray-100 text-gray-700', icon: 'fa-clock' }
-    };
-
-    const rows = allFriends.map((friend, index) => {
-        const isHidden = friend.hidden === true;
-        const cat = categoryMap[friend.category] || { text: friend.category, class: 'bg-gray-100' };
-        const badge = friend.badge ? badgeMap[friend.badge] : null;
-
-        const badgeHtml = badge ?
-            '<span class="flex items-center gap-1 text-xs font-medium ' + badge.class + ' px-2 py-1 rounded w-fit">' +
-                '<i class="fas ' + badge.icon + '"></i> ' + escapeHtml(badge.text) +
-            '</span>'
-            : '<span class="text-slate-300">-</span>';
-
-        const nameHtml = escapeHtml(friend.name) + (isHidden ? ' <span class="text-xs font-normal text-slate-400">[已隐藏]</span>' : '');
-        const urlHtml = escapeHtml(friend.url);
-
-        return '<tr class="hover:bg-slate-50 transition-colors ' + (isHidden ? 'opacity-50' : '') + '">' +
-            '<td class="px-6 py-4">' +
-                '<div class="flex items-center gap-3">' +
-                    '<img src="' + escapeHtml(friend.avatar) + '" class="w-10 h-10 rounded-full object-cover border border-slate-200"' +
-                        ' onerror="this.src=\'https://ui-avatars.com/api/?name=' + escapeHtml(friend.name) + '\'">' +
-                    '<div>' +
-                        '<div class="font-bold text-slate-800">' + nameHtml + '</div>' +
-                        '<div class="text-xs text-slate-500 truncate max-w-[200px]">' + urlHtml + '</div>' +
-                    '</div>' +
-                '</div>' +
-            '</td>' +
-            '<td class="px-6 py-4">' +
-                '<span class="px-2 py-1 rounded text-xs font-medium ' + cat.class + '">' + escapeHtml(cat.text) + '</span>' +
-            '</td>' +
-            '<td class="px-6 py-4">' + badgeHtml + '</td>' +
-            '<td class="px-6 py-4 text-right space-x-2">' +
-                '<button onclick="editFriend(' + index + ')" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">' +
-                    '<i class="fas fa-edit"></i>' +
-                '</button>' +
-                '<button onclick="deleteFriend(' + index + ')" class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="删除">' +
-                    '<i class="fas fa-trash-alt"></i>' +
-                '</button>' +
-            '</td>' +
-        '</tr>';
-    });
-
-    tbody.innerHTML = rows.join('');
+    const rows = allFriends.map((f, i) => {
+        const isHidden = f.hidden === true;
+        const safeName = encodeURIComponent(f.name);
+        return '<tr class="hover:bg-slate-50 ' + (isHidden ? 'opacity-50' : '') + '">' +
+            '<td class="px-6 py-4"><img src="' + escapeHtml(f.avatar) + '" class="w-10 h-10 rounded-full border" onerror="this.onerror=null;this.src=\'https://ui-avatars.com/api/?name=' + safeName + '\'"></td>' +
+            '<td class="px-6 py-4"><div class="font-bold">' + escapeHtml(f.name) + (isHidden ? ' [隐藏]' : '') + '</div><div class="text-xs text-slate-400">' + escapeHtml(f.url) + '</div></td>' +
+            '<td class="px-6 py-4"><span class="text-xs px-2 py-1 bg-slate-100 rounded">' + escapeHtml(f.category || 'online') + '</span></td>' +
+            '<td class="px-6 py-4"><span class="text-xs text-amber-600">' + escapeHtml(f.badge || '-') + '</span></td>' +
+            '<td class="px-6 py-4 text-right">' +
+                '<button onclick="window.editFriend(' + i + ')" class="text-blue-600 mr-2"><i class="fas fa-edit"></i></button>' +
+                '<button onclick="window.deleteFriend(' + i + ')" class="text-red-600"><i class="fas fa-trash-alt"></i></button>' +
+            '</td></tr>';
+    }).join('');
+    tbody.innerHTML = rows;
 }
 
-// ---------------------------
-// 4. 编辑/新增弹窗逻辑
-// ---------------------------
+/**
+ * 3. 弹窗与保存 (补全了分类、标记、隐藏的选择逻辑)
+ */
 function editFriend(index) {
     const isNew = index === null;
-    const friend = isNew ? { name:'', url:'', desc:'', avatar:'', category:'online', badge:'', note:'', hidden:false } : allFriends[index];
+    const f = isNew ? { name:'', url:'', avatar:'', category:'online', badge:'', hidden:false } : allFriends[index];
 
-    const modalHtml = 
-        '<div id="friend-modal" class="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center backdrop-blur-sm p-4">' +
-            '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">' +
-                '<div class="px-6 py-4 border-b flex justify-between items-center bg-slate-50">' +
-                    '<h3 class="font-bold text-slate-800">' + (isNew ? '新增站友' : '编辑站友') + '</h3>' +
-                    '<button onclick="closeFriendModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>' +
-                '</div>' +
-                // 表单内容简化示例, 全部 escapeHtml 处理
-                '<div class="p-6 space-y-4 overflow-y-auto max-h-[70vh]">' +
-                    '<label>站名<input id="f-name" value="' + escapeHtml(friend.name) + '" class="w-full"></label>' +
-                    '<label>链接<input id="f-url" value="' + escapeHtml(friend.url) + '" class="w-full"></label>' +
-                '</div>' +
-                '<div class="px-6 py-4 bg-slate-50 border-t flex justify-end gap-3">' +
-                    '<button onclick="closeFriendModal()">取消</button>' +
-                    '<button onclick="saveFriend(' + index + ')">保存</button>' +
-                '</div>' +
-            '</div>' +
-        '</div>';
-
+    const modalHtml = [
+        '<div id="friend-modal" class="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">',
+        '  <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">',
+        '    <div class="px-6 py-4 border-b bg-slate-50 font-bold">' + (isNew ? '新增站友' : '编辑站友') + '</div>',
+        '    <div class="p-6 space-y-3">',
+        '      <input id="f-name" placeholder="站名" value="' + escapeHtml(f.name) + '" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">',
+        '      <input id="f-url" placeholder="链接" value="' + escapeHtml(f.url) + '" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">',
+        '      <input id="f-avatar" placeholder="头像URL" value="' + escapeHtml(f.avatar) + '" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">',
+        '      <div class="flex gap-2">',
+        '        <select id="f-category" class="flex-1 border rounded-lg px-2 py-2 text-sm outline-none">',
+        '          <option value="online" ' + (f.category==='online'?'selected':'') + '>云间 (Online)</option>',
+        '          <option value="real" ' + (f.category==='real'?'selected':'') + '>知交 (Real)</option>',
+        '          <option value="org" ' + (f.category==='org'?'selected':'') + '>同道 (Org)</option>',
+        '        </select>',
+        '        <select id="f-badge" class="flex-1 border rounded-lg px-2 py-2 text-sm outline-none">',
+        '          <option value="" ' + (!f.badge?'selected':'') + '>无标记</option>',
+        '          <option value="star" ' + (f.badge==='star'?'selected':'') + '>推荐</option>',
+        '          <option value="error" ' + (f.badge==='error'?'selected':'') + '>失效</option>',
+        '        </select>',
+        '      </div>',
+        '      <label class="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" id="f-hidden" ' + (f.hidden?'checked':'') + '> 隐藏此友链</label>',
+        '    </div>',
+        '    <div class="px-6 py-4 bg-slate-50 border-t flex justify-end gap-2">',
+        '      <button onclick="window.closeFriendModal()" class="px-4 py-2 text-sm text-slate-500 hover:bg-slate-200 rounded-lg">取消</button>',
+        '      <button onclick="window.saveFriend(' + index + ')" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg shadow-md">保存</button>',
+        '    </div>',
+        '  </div>',
+        '</div>'
+    ].join('');
     document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-function closeFriendModal() {
-    const m = document.getElementById('friend-modal');
-    if (m) m.remove();
-}
-
-// 为了兼容新增按钮
-window.addFriend = () => editFriend(null);
-
-// ---------------------------
-// 5. 保存友链数据
-// ---------------------------
 async function saveFriend(index) {
     const name = document.getElementById('f-name').value.trim();
     const url = document.getElementById('f-url').value.trim();
-    if (!name || !url) { alert('站名和链接不能为空'); return; }
+    if (!name || !url) return alert('请填入完整信息');
 
-    const newFriend = {
+    const updatedData = {
         name, url,
-        category: 'online',
-        avatar: '',
-        desc: '',
-        note: '',
-        badge: '',
-        hidden: false
+        avatar: document.getElementById('f-avatar').value.trim(),
+        category: document.getElementById('f-category').value,
+        badge: document.getElementById('f-badge').value,
+        hidden: document.getElementById('f-hidden').checked,
+        desc: index !== null ? (allFriends[index].desc || '') : ''
     };
 
-    if (index === null) allFriends.push(newFriend);
-    else allFriends[index] = newFriend;
+    if (index === null) allFriends.push(updatedData);
+    else allFriends[index] = updatedData;
 
-    showLoading(true);
-    try {
-        const content = JSON.stringify(allFriends, null, '\t');
-        const res = await fetchAPI('/content/src/data/friends.json', {
-            method: 'PUT',
-            body: JSON.stringify({
-                content: btoa(unescape(encodeURIComponent(content))),
-                sha: currentFriendsSha
-            })
-        });
-        if (res && res.ok) {
-            const data = await res.json();
-            currentFriendsSha = data.content.sha;
-            closeFriendModal();
-            renderFriendsList();
-        } else {
-            alert('保存失败');
-        }
-    } catch(e) { alert('保存异常: '+e.message); }
-    finally { showLoading(false); }
+    await syncFriendsToGithub();
 }
 
-// ---------------------------
-// 6. 删除逻辑
-// ---------------------------
 async function deleteFriend(index) {
-    if (!confirm('确定要删除 ' + allFriends[index].name + ' 吗？')) return;
-
+    if (!confirm('确定删除？')) return;
     allFriends.splice(index, 1);
-    showLoading(true);
+    await syncFriendsToGithub();
+}
+
+async function syncFriendsToGithub() {
+    if (window.showLoading) window.showLoading(true);
     try {
         const content = JSON.stringify(allFriends, null, '\t');
         const res = await fetchAPI('/content/src/data/friends.json', {
@@ -1820,24 +1724,31 @@ async function deleteFriend(index) {
         });
         if (res && res.ok) {
             const data = await res.json();
-            currentFriendsSha = data.content.sha;
+            // 安全更新 SHA
+            if (data && data.content && data.content.sha) {
+                currentFriendsSha = data.content.sha;
+            }
+            window.closeFriendModal();
             renderFriendsList();
-        }
-    } catch(e) { alert(e.message); }
-    finally { showLoading(false); }
+        } else { alert('同步失败'); }
+    } catch(e) { alert('报错: ' + e.message); }
+    finally { if (window.showLoading) window.showLoading(false); }
 }
 
-// ---------------------------
-// 工具：HTML转义
-// ---------------------------
+/**
+ * 4. 工具与挂载
+ */
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/&/g,'&amp;')
-              .replace(/</g,'&lt;')
-              .replace(/>/g,'&gt;')
-              .replace(/"/g,'&quot;')
-              .replace(/'/g,'&#39;');
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+window.showFriendsView = showFriendsView;
+window.editFriend = editFriend;
+window.saveFriend = saveFriend;
+window.deleteFriend = deleteFriend;
+window.closeFriendModal = () => { const m = document.getElementById('friend-modal'); if(m) m.remove(); };
+window.addFriend = () => window.editFriend(null);
 
     /* =========================================================
        3.7 博客设置与 Frontmatter 解析 (Settings & Frontmatter)
