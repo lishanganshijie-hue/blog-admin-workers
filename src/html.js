@@ -793,8 +793,9 @@ export const ADMIN_HTML = `
         });
 
         allPosts.sort((a, b) => b.sortDate.localeCompare(a.sortDate));
-        filteredPosts = [...allPosts];
-        renderList();
+        // --- 核心修改：不再直接赋值渲染，而是交给 handleSearch ---
+        handleSearch(); 
+        // ---------------------------------------------------
         renderTimeline();
     }
 
