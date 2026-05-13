@@ -342,7 +342,12 @@ export const ADMIN_HTML = `
                     <button onclick="toggleFullscreen()" id="btn-fullscreen" class="p-2 text-gray-600 bg-gray-100 rounded-lg shrink-0" title="全屏编辑">
                         <i class="fas fa-expand"></i>
                     </button>
-                    <button onclick="savePost()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-6 py-1.5 md:py-2 rounded-lg shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 font-medium flex items-center gap-2 whitespace-nowrap text-sm md:text-base shrink-0">
+
+                    <button onclick="saveAsDraft()" class="bg-gray-500 hover:bg-gray-600 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-lg shadow-md transition-all transform active:scale-95 font-medium flex items-center gap-2 whitespace-nowrap text-sm md:text-base shrink-0">
+                        <i class="fas fa-save"></i> <span class="hidden md:inline">暂存草稿</span><span class="md:hidden">暂存</span>
+                    </button>
+
+                    <button onclick="savePost()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-lg shadow-lg shadow-blue-500/30 transition-all transform active:scale-95 font-medium flex items-center gap-2 whitespace-nowrap text-sm md:text-base shrink-0">
                         <i class="fas fa-paper-plane"></i> <span class="hidden md:inline">保存发布</span><span class="md:hidden">发布</span>
                     </button>
                 </div>
@@ -1097,8 +1102,24 @@ export const ADMIN_HTML = `
         startAutoSave();
     }
 
+    // 新增：暂存草稿逻辑
+    async function saveAsDraft() {
+        const draftCheckbox = document.getElementById('fm-draft');
+        if (draftCheckbox) {
+            // 自动勾选草稿框
+            draftCheckbox.checked = true;
+            // 执行保存
+            await savePost();
+        }
+    }
+
     // --- 修改：具有自动重命名逻辑的保存函数 ---
     async function savePost() {
+        // 如果是通过点击“发布”按钮进来的，自动取消草稿勾选
+        if (window.event && window.event.target.closest('button')?.onclick?.toString().includes('savePost')) {
+             const draftCheckbox = document.getElementById('fm-draft');
+             if (draftCheckbox) draftCheckbox.checked = false;
+        }
         let filename = document.getElementById('post-filename').value.trim();
         if (!filename) { alert('请输入文件名'); return; }
 
