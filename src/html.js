@@ -1574,6 +1574,7 @@ export const ADMIN_HTML = `
         vFriends.classList.remove('hidden');
 
         // 3. 填充 HTML 结构 (只在第一次加载或需要刷新时填充)
+        // 修正建议：确保 HTML 内部没有未转义的反引号，并检查插值表达式
         vFriends.innerHTML = `
             <div class="flex flex-col h-full overflow-hidden">
                 <div class="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm z-10">
@@ -1604,17 +1605,20 @@ export const ADMIN_HTML = `
                                 </tr>
                             </thead>
                             <tbody id="friends-list-body" class="divide-y divide-slate-100 text-sm text-slate-700">
-                                <tr><td colspan="5" class="py-10 text-center text-slate-400"><i class="fas fa-spinner fa-spin mr-2"></i> 加载中...</td></tr>
+                                <tr>
+                                    <td colspan="5" class="py-10 text-center text-slate-400">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i> 加载中...
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
-        `;
-        
+        `.trim(); // 使用 .trim() 清除首尾空行，减少渲染抖动
+
         // 4. 调用加载数据逻辑
         await loadFriendsData();
-    }
 
     // 2. 从 GitHub 获取 friends.json
     let currentFriendsSha = ''; // 全局记录 SHA
