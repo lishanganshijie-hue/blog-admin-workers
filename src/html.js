@@ -1560,6 +1560,7 @@ export const ADMIN_HTML = `
        ========================================================= */
 
     let allFriends = []; // 全局变量，用于存储从 JSON 加载的友链数组
+    let currentFriendsSha = '';
 
     // 1. 渲染友链管理主界面
     async function showFriendsView() {
@@ -1683,6 +1684,7 @@ export const ADMIN_HTML = `
         };
 
         tbody.innerHTML = allFriends.map((friend, index) => {
+            let isHidden = friend.hidden === true; // ✅ 明确声明
             const cat = categoryMap[friend.category] || { text: friend.category, class: 'bg-gray-100' };
             const badge = friend.badge ? badgeMap[friend.badge] : null;
             const isHidden = friend.hidden === true;
