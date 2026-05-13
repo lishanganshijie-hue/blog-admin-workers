@@ -1623,26 +1623,37 @@ export const ADMIN_HTML = `
     async function loadFriendsData() {
         showLoading(true);
         try {
-            // 注意这里的路径 src/data/friends.json
             const res = await fetchAPI('/content/src/data/friends.json');
             showLoading(false);
-            
+        
             if (res && res.ok) {
                 const data = await res.json();
-                currentFriendsSha = data.sha; // 重要：保存 SHA 供以后更新使用
-                
-                // 解码 Base64
+                currentFriendsSha = data.sha;
+            
                 const content = decodeURIComponent(escape(atob(data.content)));
                 allFriends = JSON.parse(content);
-                
+            
                 renderFriendsList();
             } else {
                 const err = await res.text();
-                document.getElementById('friends-list-body').innerHTML = `<tr><td colspan="5" class="py-10 text-center text-red-500">加载失败: ${err}</td></tr>`;
+                document.getElementById('friends-list-body').innerHTML =
+                    '<tr><td colspan="5" class="py-10 text-center text-red-500">加载失败: ' +
+                    String(err)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;') +
+                    '</td></tr>';
             }
         } catch (e) {
             showLoading(false);
             console.error(e);
+            document.getElementById('friends-list-body').innerHTML =
+                '<tr><td colspan="5" class="py-10 text-center text-red-500">加载失败: ' +
+                String(e.message || e)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;') +
+                '</td></tr>';
         }
     }
 
