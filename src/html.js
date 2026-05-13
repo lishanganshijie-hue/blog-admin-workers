@@ -158,6 +158,10 @@ export const ADMIN_HTML = `
                 <i class="fas fa-images w-5 text-center text-slate-400 group-hover:text-blue-400 transition-colors"></i>
                 <span class="font-medium">图库管理</span>
             </a>
+            <a href="javascript:void(0)" onclick="navigate('/friends')" id="nav-friends" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 transition-all group">
+                <i class="fas fa-user-friends w-5 text-center text-slate-400 group-hover:text-blue-400 transition-colors"></i>
+                <span class="font-medium">友链管理</span>
+            </a>
             <a href="javascript:void(0)" onclick="navigate('/settings')" id="nav-settings" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 transition-all group">
                 <i class="fas fa-cog w-5 text-center text-slate-400 group-hover:text-blue-400 transition-colors"></i>
                 <span class="font-medium">博客设置</span>
@@ -225,6 +229,9 @@ export const ADMIN_HTML = `
             
             <div id="timeline-overlay" onclick="toggleTimeline()" class="fixed inset-0 bg-black/50 z-20 hidden md:hidden"></div>
         </div>
+
+        <div id="view-friends" class="hidden flex-1 flex flex-col overflow-hidden bg-slate-50">
+            </div>
 
         <div id="view-gallery" class="hidden flex-1 flex overflow-hidden">
             <div class="flex-1 flex flex-col overflow-hidden bg-gray-50">
@@ -644,6 +651,13 @@ export const ADMIN_HTML = `
             el.classList.add('bg-slate-800', 'text-white');
             el.querySelector('i').classList.add('text-blue-400');
             showSettingsView();
+        } else if (path === '/friends') { // [新增友链管理部分]
+            const el = document.getElementById('nav-friends');
+            if (el) {
+                el.classList.add('bg-slate-800', 'text-white');
+                el.querySelector('i').classList.add('text-blue-400');
+            }
+            showFriendsView();
         } else if (path.startsWith('/edit/')) {
             const el = document.getElementById('nav-list');
             el.classList.add('bg-slate-800', 'text-white');
@@ -1539,6 +1553,316 @@ export const ADMIN_HTML = `
             uploadImages(input.files);
         }
         input.value = '';
+    }
+
+    /* =========================================================
+       3.6.5 友链管理 (Friends Management)
+       ========================================================= */
+
+    let allFriends = []; // 全局变量，用于存储从 JSON 加载的友链数组
+
+    // 1. 渲染友链管理主界面
+    async function showFriendsView() {
+        // 1. 隐藏所有其他视图 (参考你 handleRoute 的逻辑)
+        document.getElementById('view-list').classList.add('hidden');
+        document.getElementById('view-editor').classList.add('hidden'); // 假设编辑器ID是这个
+        if(document.getElementById('view-gallery')) document.getElementById('view-gallery').classList.add('hidden');
+        if(document.getElementById('view-settings')) document.getElementById('view-settings').classList.add('hidden');
+        
+        // 2. 显示友链视图
+        const vFriends = document.getElementById('view-friends');
+        vFriends.classList.remove('hidden');
+
+        // 3. 填充 HTML 结构 (只在第一次加载或需要刷新时填充)
+        vFriends.innerHTML = `
+            <div class="flex flex-col h-full overflow-hidden">
+                <div class="bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm z-10">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-user-friends"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-800">友链管理</h2>
+                            <p class="text-xs text-slate-500">数据源: src/data/friends.json</p>
+                        </div>
+                    </div>
+                    <button onclick="addFriend()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-md transition-all flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-plus"></i> 新增站友
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-auto p-4 md:p-6">
+                    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-bold">
+                                    <th class="px-6 py-4 text-center w-16">头像</th>
+                                    <th class="px-6 py-4">站名/链接</th>
+                                    <th class="px-6 py-4">分类</th>
+                                    <th class="px-6 py-4">标记/状态</th>
+                                    <th class="px-6 py-4 text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="friends-list-body" class="divide-y divide-slate-100 text-sm text-slate-700">
+                                <tr><td colspan="5" class="py-10 text-center text-slate-400"><i class="fas fa-spinner fa-spin mr-2"></i> 加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 4. 调用加载数据逻辑
+        await loadFriendsData();
+    }
+
+    // 2. 从 GitHub 获取 friends.json
+    let currentFriendsSha = ''; // 全局记录 SHA
+
+    async function loadFriendsData() {
+        showLoading(true);
+        try {
+            // 注意这里的路径 src/data/friends.json
+            const res = await fetchAPI('/content/src/data/friends.json');
+            showLoading(false);
+            
+            if (res && res.ok) {
+                const data = await res.json();
+                currentFriendsSha = data.sha; // 重要：保存 SHA 供以后更新使用
+                
+                // 解码 Base64
+                const content = decodeURIComponent(escape(atob(data.content)));
+                allFriends = JSON.parse(content);
+                
+                renderFriendsList();
+            } else {
+                const err = await res.text();
+                document.getElementById('friends-list-body').innerHTML = `<tr><td colspan="5" class="py-10 text-center text-red-500">加载失败: ${err}</td></tr>`;
+            }
+        } catch (e) {
+            showLoading(false);
+            console.error(e);
+        }
+    }
+
+    // 3. 渲染列表行
+    function renderFriendsList() {
+        const tbody = document.getElementById('friends-list-body');
+        if (!allFriends || allFriends.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-10 text-center">暂无友链数据</td></tr>`;
+            return;
+        }
+
+        const categoryMap = {
+            'real': { text: '知交', class: 'bg-green-100 text-green-700' },
+            'online': { text: '云间', class: 'bg-blue-100 text-blue-700' },
+            'stash': { text: '远望', class: 'bg-purple-100 text-purple-700' },
+            'org': { text: '同道', class: 'bg-orange-100 text-orange-700' }
+        };
+        
+        // 在 renderFriendsList 循环内部
+        const catKey = friend.category || 'online'; // 默认设为云间
+        const cat = categoryMap[catKey] || { text: catKey, class: 'bg-gray-100' };
+
+        const badgeMap = {
+            'star': { text: '推荐', class: 'bg-amber-100 text-amber-700', icon: 'fa-star' },
+            'error': { text: '失效', class: 'bg-red-100 text-red-700', icon: 'fa-exclamation-circle' },
+            'stale': { text: '停更', class: 'bg-gray-100 text-gray-700', icon: 'fa-clock' }
+        };
+
+        tbody.innerHTML = allFriends.map((friend, index) => {
+            const cat = categoryMap[friend.category] || { text: friend.category, class: 'bg-gray-100' };
+            const badge = friend.badge ? badgeMap[friend.badge] : null;
+            const isHidden = friend.hidden === true;
+
+            return `
+                <tr class="hover:bg-slate-50 transition-colors ${isHidden ? 'opacity-50' : ''}">
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <img src="${friend.avatar}" class="w-10 h-10 rounded-full object-cover border border-slate-200" onerror="this.src='https://ui-avatars.com/api/?name=${friend.name}'">
+                            <div>
+                                <div class="font-bold text-slate-800">${friend.name} ${isHidden ? '<span class="text-xs font-normal text-slate-400">[已隐藏]</span>' : ''}</div>
+                                <div class="text-xs text-slate-500 truncate max-w-[200px]">${friend.url}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 rounded text-xs font-medium ${cat.class}">${cat.text}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        ${badge ? `<span class="flex items-center gap-1 text-xs font-medium ${badge.class} px-2 py-1 rounded w-fit"><i class="fas ${badge.icon}"></i> ${badge.text}</span>` : '<span class="text-slate-300">-</span>'}
+                    </td>
+                    <td class="px-6 py-4 text-right space-x-2">
+                        <button onclick="editFriend(${index})" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="编辑">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="deleteFriend(${index})" class="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="删除">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // 4. 编辑/新增 弹窗逻辑
+    function editFriend(index) {
+        // 如果 index 是 null，则为新增
+        const isNew = index === null;
+        const friend = isNew ? { name: '', url: '', desc: '', avatar: '', category: 'online', badge: '', note: '', hidden: false } : allFriends[index];
+        
+        // 创建弹窗 HTML
+        const modalHtml = `
+            <div id="friend-modal" class="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center backdrop-blur-sm p-4">
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+                    <div class="px-6 py-4 border-b flex justify-between items-center bg-slate-50">
+                        <h3 class="font-bold text-slate-800">${isNew ? '新增站友' : '编辑站友'}</h3>
+                        <button onclick="closeFriendModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">站名</label>
+                                <input type="text" id="f-name" value="${friend.name}" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">分类</label>
+                                <select id="f-category" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                                    <option value="real" ${friend.category === 'real' ? 'selected' : ''}>🤝 知交 (real)</option>
+                                    <option value="online" ${friend.category === 'online' ? 'selected' : ''}>☁️ 云间 (online)</option>
+                                    <option value="stash" ${friend.category === 'stash' ? 'selected' : ''}>🔭 远望 (stash)</option>
+                                    <option value="org" ${friend.category === 'org' ? 'selected' : ''}>🏛️ 同道 (org)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">链接 (URL)</label>
+                            <input type="text" id="f-url" value="${friend.url}" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">头像 (Avatar URL)</label>
+                            <input type="text" id="f-avatar" value="${friend.avatar}" placeholder="/friends/xxx.jpg 或 http://" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">简介 (Description)</label>
+                            <input type="text" id="f-desc" value="${friend.desc || ''}" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">备注 (Note - 详细评论)</label>
+                            <textarea id="f-note" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none h-20">${friend.note || ''}</textarea>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">状态标记 (Badge)</label>
+                                <select id="f-badge" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none">
+                                    <option value="" ${!friend.badge ? 'selected' : ''}>无</option>
+                                    <option value="star" ${friend.badge === 'star' ? 'selected' : ''}>⭐ 推荐 (star)</option>
+                                    <option value="stale" ${friend.badge === 'stale' ? 'selected' : ''}>⏳ 停更 (stale)</option>
+                                    <option value="error" ${friend.badge === 'error' ? 'selected' : ''}>❌ 失效 (error)</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end pb-2">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="f-hidden" ${friend.hidden ? 'checked' : ''} class="w-4 h-4 rounded text-blue-600">
+                                    <span class="text-sm font-medium text-slate-700">隐藏此友链</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="px-6 py-4 bg-slate-50 border-t flex justify-end gap-3">
+                        <button onclick="closeFriendModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">取消</button>
+                        <button onclick="saveFriend(${index})" class="px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded-lg shadow-md transition-all">保存</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    function closeFriendModal() {
+        const m = document.getElementById('friend-modal');
+        if (m) m.remove();
+    }
+    
+    // 为了兼容你代码中的新增按钮调用
+    window.addFriend = () => editFriend(null);
+
+    // 5. 保存友链数据
+    async function saveFriend(index) {
+        const name = document.getElementById('f-name').value.trim();
+        const url = document.getElementById('f-url').value.trim();
+        if (!name || !url) { alert('站名和链接不能为空'); return; }
+
+        const newFriend = {
+            name,
+            url,
+            category: document.getElementById('f-category').value,
+            avatar: document.getElementById('f-avatar').value.trim(),
+            desc: document.getElementById('f-desc').value.trim(),
+            note: document.getElementById('f-note').value.trim(),
+            badge: document.getElementById('f-badge').value,
+            hidden: document.getElementById('f-hidden').checked
+        };
+
+        // 更新本地数组
+        if (index === null) {
+            allFriends.push(newFriend);
+        } else {
+            allFriends[index] = newFriend;
+        }
+
+        showLoading(true);
+        try {
+            // 将数组转回格式化的 JSON 字符串
+            const content = JSON.stringify(allFriends, null, '\t'); // 使用 \t 保持美观
+            
+            const res = await fetchAPI('/content/src/data/friends.json', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    content: btoa(unescape(encodeURIComponent(content))), // 处理中文 Base64
+                    sha: currentFriendsSha
+                })
+            });
+
+            if (res && res.ok) {
+                const data = await res.json();
+                currentFriendsSha = data.content.sha; // 更新 SHA
+                alert('友链数据已同步至 GitHub！');
+                closeFriendModal();
+                renderFriendsList();
+            } else {
+                alert('保存失败: ' + await res.text());
+            }
+        } catch (e) {
+            alert('保存异常: ' + e.message);
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // 6. 删除逻辑
+    async function deleteFriend(index) {
+        if (!confirm(`确定要删除 ${allFriends[index].name} 吗？此操作不可撤销。`)) return;
+        
+        allFriends.splice(index, 1);
+        // 调用保存，由于这里不需要表单数据，直接复用部分逻辑或简单写一个：
+        showLoading(true);
+        try {
+            const content = JSON.stringify(allFriends, null, '\t');
+            const res = await fetchAPI('/content/src/data/friends.json', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    content: btoa(unescape(encodeURIComponent(content))),
+                    sha: currentFriendsSha
+                })
+            });
+            if (res && res.ok) {
+                const data = await res.json();
+                currentFriendsSha = data.content.sha;
+                renderFriendsList();
+            }
+        } catch (e) { alert(e.message); }
+        finally { showLoading(false); }
     }
 
     /* =========================================================
