@@ -4,7 +4,7 @@ export const ADMIN_HTML = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>UpXuu Blog Admin</title>
+    <title>JianNav Blog Admin</title>
     <link rel="stylesheet" href="https://unpkg.com/vditor/dist/index.css" />
     <script src="https://unpkg.com/vditor/dist/index.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -122,7 +122,7 @@ export const ADMIN_HTML = `
         <button onclick="toggleSidebar()" class="text-gray-600 focus:outline-none p-2 rounded hover:bg-gray-100">
             <i class="fas fa-bars text-xl"></i>
         </button>
-        <span class="font-bold text-lg text-gray-800">UpXuu Admin</span>
+        <span class="font-bold text-lg text-gray-800">JianNav Admin</span>
         <button onclick="toggleTimeline()" id="mobile-timeline-btn" class="text-gray-600 focus:outline-none p-2 rounded hover:bg-gray-100 hidden">
             <i class="fas fa-clock text-xl"></i>
         </button>
@@ -141,7 +141,7 @@ export const ADMIN_HTML = `
             <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
                 <i class="fas fa-feather-alt text-white text-sm"></i>
             </div>
-            <h1 class="text-xl font-bold tracking-wide">UpXuu</h1>
+            <h1 class="text-xl font-bold tracking-wide">JianNav</h1>
         </div>
         
         <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
@@ -183,7 +183,7 @@ export const ADMIN_HTML = `
             <div class="flex-1 flex flex-col overflow-hidden bg-gray-50">
                 <div class="p-4 md:p-6 border-b bg-white shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center z-10">
                     <div class="flex items-center gap-2 w-full md:w-auto">
-                        <h2 class="text-xl font-bold text-gray-800">文章列表</h2>
+                        <h2 class="text-xl font-bold text-gray-800">文章管理</h2>
                         <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full" id="post-count">0</span>
                         <span id="current-filter" class="hidden ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded border flex items-center gap-1">
                             <span id="filter-text"></span>
@@ -195,11 +195,22 @@ export const ADMIN_HTML = `
                         <input type="text" id="search-input" oninput="handleSearch()" placeholder="搜索标题..." class="w-full border-gray-200 border bg-gray-50 pl-10 pr-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all">
                     </div>
                 </div>
+
+                <div class="bg-white border-b border-gray-200 px-4 md:px-6">
+                    <div class="flex">
+                        <button onclick="switchListTab('published')" id="tab-published" class="px-6 py-3 text-sm font-bold border-b-2 border-blue-500 text-blue-600 transition-all">
+                            已发布文章
+                        </button>
+                        <button onclick="switchListTab('drafts')" id="tab-drafts" class="px-6 py-3 text-sm font-medium text-gray-500 hover:text-blue-500 transition-all border-b-2 border-transparent">
+                            草稿箱 <span id="draft-count-badge" class="ml-2 bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full text-[10px]">0</span>
+                        </button>
+                    </div>
+                </div>
                 
                 <div id="list-container" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-3 pb-20 md:pb-6">
-                    </div>
+                </div>
             </div>
-
+        
             <div id="timeline-sidebar" class="fixed inset-y-0 right-0 w-64 bg-white shadow-2xl transform translate-x-full md:translate-x-0 md:static md:w-72 md:shadow-none border-l z-30 sidebar-transition flex flex-col">
                 <div class="p-5 border-b bg-gray-50 flex justify-between items-center md:hidden">
                     <h3 class="font-bold text-gray-700">时间轴筛选</h3>
@@ -482,6 +493,7 @@ export const ADMIN_HTML = `
        3.1 全局状态与基础工具 (State & Utilities)
        ========================================================= */
     let vditor;
+    let currentListTab = 'published';
     const API_BASE = '/api';
     let currentSha = null;
     let allPosts = [];
@@ -886,20 +898,64 @@ export const ADMIN_HTML = `
     
     function clearFilter() { filterByDate(null); }
 
+    // --- 新增：切换 Tab 的函数 ---
+    function switchListTab(tab) {
+        currentListTab = tab;
+        const pubBtn = document.getElementById('tab-published');
+        const draftBtn = document.getElementById('tab-drafts');
+        
+        // 切换按钮的样式（蓝色高亮 vs 灰色普通）
+        if (tab === 'published') {
+            pubBtn.className = 'px-6 py-3 text-sm font-bold border-b-2 border-blue-500 text-blue-600 transition-all';
+            draftBtn.className = 'px-6 py-3 text-sm font-medium text-gray-500 hover:text-blue-500 transition-all border-b-2 border-transparent';
+        } else {
+            draftBtn.className = 'px-6 py-3 text-sm font-bold border-b-2 border-blue-500 text-blue-600 transition-all';
+            pubBtn.className = 'px-6 py-3 text-sm font-medium text-gray-500 hover:text-blue-500 transition-all border-b-2 border-transparent';
+        }
+        
+        // 切换后立即重新根据搜索逻辑渲染列表
+        handleSearch();
+    }
+
+    // --- 修改：升级版的搜索和过滤函数 ---
     function handleSearch() {
         const term = document.getElementById('search-input').value.toLowerCase();
-        let base = currentFilterYm 
-            ? allPosts.filter(p => (p.date || p.dateStr || '其他').startsWith(currentFilterYm))
-            : [...allPosts];
+        
+        // 1. 核心逻辑：根据当前选中的 Tab 进行分流过滤
+        let base = allPosts.filter(p => {
+            // 判断规则：文件名以 draft- 开头，或者 Frontmatter 里的 draft 属性为 true
+            const isDraft = (p.name && p.name.startsWith('draft-')) || p.draft === true;
             
+            // 如果在草稿箱 Tab，只留草稿；如果在已发布 Tab，只留非草稿
+            return currentListTab === 'drafts' ? isDraft : !isDraft;
+        });
+
+        // 2. 如果有日期筛选，继续过滤
+        if (typeof currentFilterYm !== 'undefined' && currentFilterYm) {
+            base = base.filter(p => (p.date || p.dateStr || '其他').startsWith(currentFilterYm));
+        }
+            
+        // 3. 根据搜索框关键词过滤
         if (term) {
             filteredPosts = base.filter(p => 
                 (p.title && p.title.toLowerCase().includes(term)) || 
-                p.name.toLowerCase().includes(term)
+                (p.name && p.name.toLowerCase().includes(term))
             );
         } else {
             filteredPosts = base;
         }
+
+        // 4. 更新 UI 上的计数器
+        const postCountEl = document.getElementById('post-count');
+        if (postCountEl) postCountEl.textContent = filteredPosts.length;
+
+        // 特别更新：草稿箱上的小数字角标（显示总共有多少草稿）
+        const draftBadge = document.getElementById('draft-count-badge');
+        if (draftBadge) {
+            const totalDrafts = allPosts.filter(p => (p.name && p.name.startsWith('draft-')) || p.draft === true).length;
+            draftBadge.textContent = totalDrafts;
+        }
+
         renderList();
     }
 
@@ -1041,25 +1097,53 @@ export const ADMIN_HTML = `
         startAutoSave();
     }
 
+    // --- 修改：具有自动重命名逻辑的保存函数 ---
     async function savePost() {
-        const filename = document.getElementById('post-filename').value.trim();
+        let filename = document.getElementById('post-filename').value.trim();
         if (!filename) return alert('请输入文件名');
+
+        // 【核心逻辑】：根据草稿勾选框，自动处理文件名
+        const isDraftChecked = document.getElementById('fm-draft').checked;
+        
+        // 1. 如果勾选了草稿，且文件名没前缀，就加上 'draft-'
+        if (isDraftChecked && !filename.startsWith('draft-')) {
+            filename = 'draft-' + filename;
+        } 
+        // 2. 如果没勾选草稿，但文件名有 'draft-' 前缀，就去掉它（即“转正”）
+        else if (!isDraftChecked && filename.startsWith('draft-')) {
+            filename = filename.replace(/^draft-/, '');
+        }
+
         const finalFilename = filename.endsWith('.md') ? filename : filename + '.md';
         if (!isVditorReady) { alert('编辑器尚未加载完成'); return; }
+        
         const content = buildFrontmatter() + vditor.getValue();
         showLoading(true);
+        
+        // 发送保存请求
         const res = await fetchAPI('/post/' + encodeURIComponent(finalFilename), {
             method: 'PUT',
             body: JSON.stringify({ content: content, sha: currentSha })
         });
+        
         showLoading(false);
         if (res && res.ok) {
             const data = await res.json();
-            let msg = '保存成功！';
+            let msg = isDraftChecked ? '草稿已保存！' : '文章已发布！';
+            
             if (data.indexNow && data.indexNow.status === 'pending') {
-                msg += '\\nIndexNow 提交已触发 (后台处理中)';
+                msg += '\nIndexNow 提交已触发 (后台处理中)';
             }
             alert(msg);
+            
+            // 【自动跳转】：如果文件名变了（比如从草稿变成了正式文章），URL也得变
+            const currentPath = window.location.pathname;
+            const newEditPath = '/edit/' + encodeURIComponent(finalFilename);
+            if (currentPath.startsWith('/edit/') && decodeURIComponent(currentPath.replace('/edit/', '')) !== finalFilename) {
+                 // 自动跳转到新的编辑地址，防止下次保存报错（SHA冲突）
+                 window.history.replaceState(null, '', newEditPath);
+            }
+            
             if (data.content && data.content.sha) currentSha = data.content.sha;
             clearDraft(finalFilename);
         } else {
